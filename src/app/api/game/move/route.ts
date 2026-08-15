@@ -1,3 +1,4 @@
+import { processTournamentGameResult } from "@/lib/tournament/results";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { validateAndApplyMove } from "@/lib/game/chess-engine";
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
     // Load current game state
     const { data: game } = await supabase
       .from("games")
-      .select("id, white_player_id, black_player_id, fen, pgn, turn, status, white_clock_ms, black_clock_ms, last_move_at, increment_seconds")
+      .select("id, white_player_id, black_player_id, fen, pgn, turn, status, white_clock_ms, black_clock_ms, last_move_at, increment_seconds, tournament_id")
       .eq("id", gameId)
       .single();
 
@@ -137,10 +138,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
+
+    // Process tournament game result
+    if (gameEnded && result.winner && game.tournament_id) {
+      await processTournamentGameResult({
+        gameId,
+        whitePlayerId: game.white_player_id,
+        blackPlayerId: game.black_player_id,
+        winner: result.winner as "white" | "black" | "draw",
+        status: result.status || "playing",
+      });
+    }
+
     return NextResponse.json({
       valid: true,
       fen: result.fen,
-      status: result.status,
+      status: result.status || "playing",
       winner: result.winner,
       turn: result.turn,
       moveCount: result.moveCount,

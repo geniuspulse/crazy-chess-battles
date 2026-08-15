@@ -1,3 +1,4 @@
+import { processTournamentGameResult } from "@/lib/tournament/results";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -83,6 +84,23 @@ export async function POST(req: NextRequest) {
         white_rating_change: whiteNewRating - whiteProfile.rating,
         black_rating_change: blackNewRating - blackProfile.rating,
       }).eq("id", gameId);
+    }
+
+    // Process tournament game result if this is a tournament game
+    const { data: fullGame } = await supabase
+      .from("games")
+      .select("tournament_id")
+      .eq("id", gameId)
+      .single();
+
+    if (fullGame?.tournament_id) {
+      await processTournamentGameResult({
+        gameId,
+        whitePlayerId: game.white_player_id,
+        blackPlayerId: game.black_player_id,
+        winner: winner as "white" | "black",
+        status: "resign",
+      });
     }
 
     return NextResponse.json({ status: "resigned", winner });
