@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { UserPlus, LogOut, Play, Square, Loader2, AlertCircle } from 'lucide-react';
+import { UserPlus, LogOut, Play, Square, Loader2, AlertCircle, ChevronRight } from 'lucide-react';
 
 interface TournamentActionsProps {
   tournamentId: string;
@@ -21,7 +21,7 @@ export default function TournamentActions({
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleAction = async (action: 'join' | 'leave' | 'start' | 'finish') => {
+  const handleAction = async (action: 'join' | 'leave' | 'start' | 'finish' | 'advance-round') => {
     setLoadingAction(action);
     setError(null);
 
@@ -124,23 +124,43 @@ export default function TournamentActions({
             )}
 
             {status === 'active' && (
-              <button
-                onClick={() => handleAction('finish')}
-                disabled={loadingAction !== null}
-                className="px-4 py-2 text-sm font-medium rounded-lg bg-ccb-danger text-white hover:bg-ccb-danger/90 transition-colors flex items-center gap-2 disabled:opacity-50"
-              >
-                {loadingAction === 'finish' ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Finishing...</span>
-                  </>
-                ) : (
-                  <>
-                    <Square className="w-4 h-4 fill-current" />
-                    <span>Finish Tournament</span>
-                  </>
-                )}
-              </button>
+              <>
+                <button
+                  onClick={() => handleAction('advance-round')}
+                  disabled={loadingAction !== null}
+                  className="px-4 py-2 text-sm font-medium rounded-lg bg-ccb-primary text-white hover:bg-ccb-primary/90 transition-colors flex items-center gap-2 disabled:opacity-50"
+                >
+                  {loadingAction === 'advance-round' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Advancing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ChevronRight className="w-4 h-4" />
+                      <span>Advance Round</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => handleAction('finish')}
+                  disabled={loadingAction !== null}
+                  className="px-4 py-2 text-sm font-medium rounded-lg bg-ccb-danger text-white hover:bg-ccb-danger/90 transition-colors flex items-center gap-2 disabled:opacity-50"
+                >
+                  {loadingAction === 'finish' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Finishing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Square className="w-4 h-4 fill-current" />
+                      <span>Finish Tournament</span>
+                    </>
+                  )}
+                </button>
+              </>
             )}
           </>
         )}
