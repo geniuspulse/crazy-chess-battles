@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Swords, Clock, Zap, X } from "lucide-react";
+import { Swords, Clock, Zap, X, Link2, Copy, Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 const timeControls = [
@@ -18,6 +18,8 @@ export default function PlayPage() {
   const [selectedTC, setSelectedTC] = useState<string>("blitz");
   const [rated, setRated] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [challengeUrl, setChallengeUrl] = useState<string | null>(null);
+  const [creatingChallenge, setCreatingChallenge] = useState(false);
   const [matchError, setMatchError] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createClient();
@@ -102,6 +104,30 @@ export default function PlayPage() {
     setSearching(false);
   };
 
+  const handleCreateChallenge = async () => {
+    setCreatingChallenge(true);
+    try {
+      const response = await fetch("/api/challenge/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timeControl: selectedTC, rated }),
+      });
+      const data = await response.json();
+      if (data.url) {
+        setChallengeUrl(data.url);
+      }
+    } catch {
+      // ignore
+    }
+    setCreatingChallenge(false);
+  };
+
+  const handleCopyLink = () => {
+    if (challengeUrl) {
+      navigator.clipboard.writeText(challengeUrl);
+    }
+  };
+
   if (searching) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6">
@@ -182,6 +208,47 @@ export default function PlayPage() {
             }`}
           />
         </button>
+      </div>
+
+      {/* Challenge a Friend */}
+      <div className="card space-y-3">
+        <h3 className="font-medium flex items-center gap-2">
+          <Link2 className="w-4 h-4 text-ccb-primary" />
+          Challenge a Friend
+        </h3>
+        <p className="text-sm text-ccb-muted">
+          Generate a link and share it. The game starts as soon as they accept.
+        </p>
+        {challengeUrl ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                readOnly
+                value={challengeUrl}
+                className="input-field flex-1 text-xs"
+                onClick={(e) => (e.target as HTMLInputElement).select()}
+              />
+              <button onClick={handleCopyLink} className="btn-secondary px-3">
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
+            <a href={challengeUrl} target="_blank" className="text-xs text-ccb-primary hover:underline">
+              Open challenge page →
+            </a>
+          </div>
+        ) : (
+          <button
+            onClick={handleCreateChallenge}
+            disabled={creatingChallenge}
+            className="btn-secondary w-full flex items-center justify-center gap-2"
+          >
+            {creatingChallenge ? (
+              <><span className="animate-pulse">Generating...</span></>
+            ) : (
+              <><Link2 className="w-4 h-4" /> Generate Challenge Link</>
+            )}
+          </button>
+        )}
       </div>
 
       {/* Play button */}
