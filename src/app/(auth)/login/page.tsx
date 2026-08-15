@@ -1,6 +1,37 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const supabase = createClient();
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+    } else {
+      router.push("/dashboard");
+      router.refresh();
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md">
@@ -14,16 +45,38 @@ export default function LoginPage() {
           <p className="text-sm text-ccb-muted mt-1">Log in to continue battling</p>
         </div>
 
-        <form className="card space-y-4" action="/api/auth/callback" method="POST">
+        {error && (
+          <div className="rounded-lg bg-ccb-danger/10 border border-ccb-danger/30 text-ccb-danger px-4 py-3 text-sm mb-4">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleLogin} className="card space-y-4">
           <div>
             <label className="text-sm font-medium block mb-1.5">Email</label>
-            <input type="email" name="email" className="input" placeholder="you@example.com" required />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="input"
+              placeholder="you@example.com"
+              required
+            />
           </div>
           <div>
             <label className="text-sm font-medium block mb-1.5">Password</label>
-            <input type="password" name="password" className="input" placeholder="••••••••" required />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="input"
+              placeholder="••••••••"
+              required
+            />
           </div>
-          <button type="submit" className="btn-primary w-full">Log in</button>
+          <button type="submit" disabled={loading} className="btn-primary w-full">
+            {loading ? "Logging in..." : "Log in"}
+          </button>
         </form>
 
         <p className="text-center text-sm text-ccb-muted mt-6">
