@@ -13,6 +13,9 @@ import {
   Award,
   Calendar,
   Layers,
+  Swords,
+  CheckCircle2,
+  CircleDot,
 } from "lucide-react";
 import TournamentActions from "./tournament-actions";
 
@@ -101,7 +104,32 @@ export default async function TournamentDetailPage({
     .eq("tournament_id", id)
     .order("score", { ascending: false });
 
+
   const participants = rawParticipants || [];
+
+  // Fetch current round pairings and games (for active tournaments)
+  let currentRound = null;
+  let roundGames: any[] = [];
+
+  if (tournament.status === "active" && tournament.current_round) {
+    const { data: roundData } = await supabase
+      .from("tournament_rounds")
+      .select("id, pairings, is_complete, round_number")
+      .eq("tournament_id", id)
+      .eq("round_number", tournament.current_round)
+      .single();
+
+    currentRound = roundData;
+
+    if (roundData) {
+      const { data: games } = await supabase
+        .from("games")
+        .select("id, white_player_id, black_player_id, status, winner, tournament_round")
+        .eq("tournament_id", id)
+        .eq("tournament_round", tournament.current_round);
+      roundGames = games || [];
+    }
+  }
 
   // Check current user profile & participation
   let isAdmin = false;
@@ -275,7 +303,80 @@ export default async function TournamentDetailPage({
         </div>
       </div>
 
-      {/* Standings / Participant List */}
+      {/* Current Round — pairings & games */}
+      {currentRound && (
+        <div className="card space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold flex items-center gap-2">
+              <Swords className="w-5 h-5 text-ccb-primary" />
+              Round {tournament.current_round} Pairings
+            </h2>
+            <span className="text-xs text-ccb-muted">
+              {currentRound.is_complete ? "Complete" : "In Progress"}
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {currentRound.pairings?.map((pairing: any, i: number) => {
+              const whiteP = participants.find((p) => p.player_id === pairing.white);
+              const blackP = participants.find((p) => p.player_id === pairing.black);
+              const byeP = participants.find((p) => p.player_id === pairing.bye);
+              const whiteProfile = whiteP ? (Array.isArray(whiteP.profiles) ? whiteP.profiles[0] : whiteP.profiles) : null;
+              const blackProfile = blackP ? (Array.isArray(blackP.profiles) ? blackP.profiles[0] : blackP.profiles) : null;
+              const byeProfile = byeP ? (Array.isArray(byeP.profiles) ? byeP.profiles[0] : byeP.profiles) : null;
+              const game = roundGames.find((g: any) =>
+                (g.white_player_id === pairing.white && g.black_player_id === pairing.black) ||
+                (g.white_player_id === pairing.black && g.black_player_id === pairing.white)
+              );
+              const hasResult = pairing.result !== null && pairing.result !== undefined;
+
+              return (
+                <div
+                  key={i}
+                  className="flex items-center justify-between p-3 rounded-lg bg-ccb-surface/50 border border-ccb-surface gap-3"
+                >
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="text-xs text-ccb-muted font-mono shrink-0">#{pairing.board}</span>
+                    {pairing.bye ? (
+                      <span className="text-sm">
+                        <span className="font-semibold">{byeProfile?.display_name || byeProfile?.username || "Player"}</span>
+                        <span className="ml-2 text-xs text-ccb-accent">BYE</span>
+                      </span>
+                    ) : (
+                      <span className="text-sm flex items-center gap-2 flex-wrap">
+                        <span className={pairing.result === "black" ? "text-ccb-muted line-through" : "font-semibold"}>
+                          {whiteProfile?.display_name || whiteProfile?.username || "Player"}
+                        </span>
+                        <span className="text-ccb-muted text-xs">vs</span>
+                        <span className={pairing.result === "white" ? "text-ccb-muted line-through" : "font-semibold"}>
+                          {blackProfile?.display_name || blackProfile?.username || "Player"}
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                  <div className="shrink-0">
+                    {pairing.bye ? (
+                      <CheckCircle2 className="w-4 h-4 text-ccb-success" />
+                    ) : hasResult ? (
+                      <span className="text-xs px-2 py-1 rounded bg-ccb-success/10 text-ccb-success font-mono">
+                        {pairing.result === "white" ? "1-0" : pairing.result === "black" ? "0-1" : "½-½"}
+                      </span>
+                    ) : game ? (
+                      <Link href={`/play?game=${game.id}`} className="text-xs px-2 py-1 rounded bg-ccb-primary/10 text-ccb-primary hover:bg-ccb-primary/20 transition-colors">
+                        Watch →
+                      </Link>
+                    ) : (
+                      <CircleDot className="w-4 h-4 text-ccb-muted" />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+            {/* Standings / Participant List */}
       <div className="card space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold flex items-center gap-2">
