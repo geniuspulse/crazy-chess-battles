@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/matchmaking/pair",
-      "schedule": "* * * * *"
+      "schedule": "0 3 * * *"
     }
   ]
 }
