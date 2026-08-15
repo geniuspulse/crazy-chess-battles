@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Swords, Trophy, TrendingUp, Clock } from "lucide-react";
 
 export default async function DashboardPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   const { data: profile } = await supabase

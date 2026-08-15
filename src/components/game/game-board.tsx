@@ -28,19 +28,19 @@ export default function GameBoard({ fen }: { fen?: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Chessboard */}
       <div className="w-full max-w-[600px] aspect-square mx-auto">
-        <Chessboard
-          position={game.fen()}
-          onPieceDrop={onDrop}
-          boardWidth={600}
-          customDarkSquareStyle={{ backgroundColor: "#312e81" }}
-          customLightSquareStyle={{ backgroundColor: "#e0e7ff" }}
-          customBoardStyle={{ borderRadius: "8px", overflow: "hidden" }}
-        />
+        <Chessboard options={{
+          position: game.fen(),
+          onPieceDrop: ({ sourceSquare, targetSquare }) => {
+            if (!targetSquare) return false;
+            return onDrop(sourceSquare, targetSquare);
+          },
+          darkSquareStyle: { backgroundColor: "#312e81" },
+          lightSquareStyle: { backgroundColor: "#e0e7ff" },
+          boardStyle: { borderRadius: "8px", overflow: "hidden" },
+        }} />
       </div>
 
-      {/* Move list */}
       {moveList.length > 0 && (
         <div className="card max-w-[600px] mx-auto w-full">
           <h4 className="text-sm font-medium mb-2">Moves</h4>

@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
 
     // Clean up old entries (60s timeout)
     await supabase.rpc("cleanup_matchmaking");

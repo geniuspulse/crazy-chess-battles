@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Trophy, Plus, Users, Clock } from "lucide-react";
 
 export default async function TournamentsPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: tournaments } = await supabase
     .from("tournaments")

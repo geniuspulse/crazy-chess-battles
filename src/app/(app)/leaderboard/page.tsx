@@ -3,7 +3,7 @@ import { Crown, Medal } from "lucide-react";
 import Link from "next/link";
 
 export default async function LeaderboardPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: players } = await supabase
     .from("profiles")

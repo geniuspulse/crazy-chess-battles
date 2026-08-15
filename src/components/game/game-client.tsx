@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
 import { useRealtimeGame, type GameState } from "@/hooks/use-realtime-game";
-import { Clock, Flag, Handshake } from "lucide-react";
+import { Clock, Flag } from "lucide-react";
 
 interface GameClientProps {
   gameId: string;
@@ -28,37 +28,27 @@ export default function GameClient({ gameId, initialGame, currentUserId }: GameC
   const [chess] = useState(() => new Chess(game.fen));
   const [fen, setFen] = useState(game.fen);
   const [showResignConfirm, setShowResignConfirm] = useState(false);
-  const [clockTick, setClockTick] = useState(0);
+  const lastFenRef = useRef(game.fen);
 
   const isWhite = game.white_player_id === currentUserId;
   const isBlack = game.black_player_id === currentUserId;
   const myTurn = (isWhite && game.turn === "white") || (isBlack && game.turn === "black");
   const gameEnded = game.status !== "playing";
 
-  // Live clock ticking
-  useEffect(() => {
-    if (gameEnded || !game.last_move_at) return;
-    const interval = setInterval(() => {
-      setClockTick((t) => t + 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [gameEnded, game.last_move_at]);
-
-  // Calculate live clock display
   const getLiveClock = (player: "white" | "black") => {
     if (!game.last_move_at || !game.white_clock_ms || !game.black_clock_ms) return "—";
     if (gameEnded || game.turn !== player) {
       return formatClock(player === "white" ? game.white_clock_ms : game.black_clock_ms);
     }
-    // Clock is ticking for the current player
     const elapsed = Date.now() - new Date(game.last_move_at).getTime();
     const baseMs = player === "white" ? game.white_clock_ms : game.black_clock_ms;
     return formatClock(Math.max(0, baseMs - elapsed));
   };
 
-  // Sync local chess instance when game.fen changes from realtime
+  // Sync local FEN when game state updates from realtime
   useEffect(() => {
     setFen(game.fen);
+    lastFenRef.current = game.fen;
     try {
       chess.load(game.fen);
     } catch {
@@ -66,14 +56,28 @@ export default function GameClient({ gameId, initialGame, currentUserId }: GameC
     }
   }, [game.fen, chess]);
 
+  // Optimistic move: allow the drop visually, then validate via API
+  // If API rejects, the realtime sync will revert the board
   const onDrop = useCallback(
-    (sourceSquare: string, targetSquare: string) => {
+    (sourceSquare: string, targetSquare: string): boolean => {
       if (!myTurn || gameEnded) return false;
 
-      const success = makeMove(sourceSquare, targetSquare);
-      return success;
+      // Optimistically update local board
+      try {
+        const tempGame = new Chess(fen);
+        const move = tempGame.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
+        if (move === null) return false;
+        setFen(tempGame.fen());
+      } catch {
+        return false;
+      }
+
+      // Fire async move to API (don't await)
+      makeMove(sourceSquare, targetSquare);
+
+      return true;
     },
-    [myTurn, gameEnded, makeMove]
+    [myTurn, gameEnded, fen, makeMove]
   );
 
   const handleResign = async () => {
@@ -82,11 +86,9 @@ export default function GameClient({ gameId, initialGame, currentUserId }: GameC
   };
 
   const myRatingChange = isWhite ? game.white_rating_change : game.black_rating_change;
-  const opponentRatingChange = isWhite ? game.black_rating_change : game.white_rating_change;
 
   return (
     <div className="space-y-4">
-      {/* Connection status */}
       {!connected && (
         <div className="rounded-lg bg-ccb-danger/10 border border-ccb-danger/30 text-ccb-danger px-4 py-2 text-sm text-center">
           Reconnecting to game...
@@ -115,7 +117,7 @@ export default function GameClient({ gameId, initialGame, currentUserId }: GameC
           </div>
         </div>
         <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-mono text-lg font-bold ${
-          game.turn === (isWhite ? "black" : "white") ? "bg-ccb-primary/10 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
+          game.turn === (isWhite ? "black" : "white") && !gameEnded ? "bg-ccb-primary/10 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
         }`}>
           <Clock className="w-4 h-4" />
           {getLiveClock(isWhite ? "black" : "white")}
@@ -124,15 +126,17 @@ export default function GameClient({ gameId, initialGame, currentUserId }: GameC
 
       {/* Chessboard */}
       <div className="w-full max-w-[600px] aspect-square mx-auto">
-        <Chessboard
-          position={fen}
-          onPieceDrop={onDrop}
-          boardWidth={600}
-          arePiecesDraggable={myTurn && !gameEnded}
-          customDarkSquareStyle={{ backgroundColor: "#312e81" }}
-          customLightSquareStyle={{ backgroundColor: "#e0e7ff" }}
-          customBoardStyle={{ borderRadius: "8px", overflow: "hidden" }}
-        />
+        <Chessboard options={{
+          position: fen,
+          onPieceDrop: ({ sourceSquare, targetSquare }) => {
+            if (!targetSquare) return false;
+            return onDrop(sourceSquare, targetSquare);
+          },
+          allowDragging: myTurn && !gameEnded,
+          darkSquareStyle: { backgroundColor: "#312e81" },
+          lightSquareStyle: { backgroundColor: "#e0e7ff" },
+          boardStyle: { borderRadius: "8px", overflow: "hidden" },
+        }} />
       </div>
 
       {/* My info bar (bottom) */}
@@ -149,7 +153,7 @@ export default function GameClient({ gameId, initialGame, currentUserId }: GameC
           </div>
         </div>
         <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-mono text-lg font-bold ${
-          myTurn ? "bg-ccb-primary/10 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
+          myTurn && !gameEnded ? "bg-ccb-primary/10 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
         }`}>
           <Clock className="w-4 h-4" />
           {getLiveClock(isWhite ? "white" : "black")}
@@ -201,7 +205,6 @@ export default function GameClient({ gameId, initialGame, currentUserId }: GameC
         </div>
       )}
 
-      {/* Move count */}
       <div className="text-center text-xs text-ccb-muted">
         Move {game.move_count} · {game.time_control} · {game.rated ? "Ranked" : "Casual"}
       </div>

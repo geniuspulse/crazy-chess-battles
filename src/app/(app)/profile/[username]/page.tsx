@@ -7,7 +7,7 @@ export default async function ProfilePage({
   params: Promise<{ username: string }>;
 }) {
   const { username } = await params;
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: profile } = await supabase
     .from("profiles")
