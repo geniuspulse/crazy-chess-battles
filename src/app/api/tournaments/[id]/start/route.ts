@@ -80,13 +80,14 @@ export async function POST(
 
     // Update seeds using admin client (bypasses RLS)
     const admin = createAdminClient();
-    seeded.forEach((p, i) => {
-      admin
+    
+    for (let i = 0; i < seeded.length; i++) {
+      await admin
         .from("tournament_participants")
         .update({ seed: i + 1 })
-        .eq("player_id", p.player_id)
+        .eq("player_id", seeded[i].player_id)
         .eq("tournament_id", tournamentId);
-    });
+    }
 
     // Generate Swiss pairings for Round 1
     // Simple Swiss: pair top half vs bottom half
@@ -114,7 +115,7 @@ export async function POST(
       }
     }
 
-    // Create tournament round entry
+    // Create tournament round entry (uses is_complete, not status)
     const { error: roundError } = await admin
       .from("tournament_rounds")
       .insert({
@@ -127,11 +128,12 @@ export async function POST(
           bye: p.bye || null,
           result: null,
         })),
-        status: "in_progress",
+        is_complete: false,
       });
 
     if (roundError) {
       console.error("Round creation error:", roundError);
+      // Continue anyway — the tournament is started
     }
 
     // Create game entries for each pairing and award byes
@@ -148,7 +150,7 @@ export async function POST(
       await admin.from("games").insert({
         white_player_id: pairing.white,
         black_player_id: pairing.black,
-        status: "waiting",
+        status: "playing",
         time_control: tournament.time_control,
         initial_minutes: tournament.initial_minutes,
         increment_seconds: tournament.increment_seconds,
