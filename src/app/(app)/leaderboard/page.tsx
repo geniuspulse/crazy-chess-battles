@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { Crown, Medal } from "lucide-react";
+import Link from "next/link";
 
 export default async function LeaderboardPage() {
   const supabase = createClient();
@@ -24,7 +25,7 @@ export default async function LeaderboardPage() {
     <div className="space-y-6 pb-20 sm:pb-0">
       <div>
         <h1 className="text-2xl font-bold">Leaderboard</h1>
-        <p className="text-sm text-ccb-muted mt-1">Top players ranked by Glicko-2 rating</p>
+        <p className="text-sm text-ccb-muted mt-1">Top players ranked by rating</p>
       </div>
 
       {/* Top 3 podium */}
@@ -48,7 +49,9 @@ export default async function LeaderboardPage() {
                   )}
                 </div>
                 <div className="text-xs text-ccb-muted">#{idx + 1}</div>
-                <div className="font-bold text-sm truncate">{player.display_name || player.username}</div>
+                <Link href={`/profile/${player.username}`} className="font-bold text-sm truncate block hover:text-ccb-primary">
+                  {player.display_name || player.username}
+                </Link>
                 <div className={`text-lg font-bold ${tier.color}`}>{player.rating}</div>
                 <div className={`inline-block rounded-full px-2 py-0.5 text-xs ${tier.bg} ${tier.color} mt-1`}>
                   {tier.label}

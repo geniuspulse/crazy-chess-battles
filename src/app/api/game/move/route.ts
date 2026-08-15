@@ -1,0 +1,153 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { validateAndApplyMove } from "@/lib/game/chess-engine";
+
+export async function POST(req: NextRequest) {
+  try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { gameId, move } = await req.json();
+
+    if (!gameId || !move) {
+      return NextResponse.json({ error: "Game ID and move required" }, { status: 400 });
+    }
+
+    // Load current game state
+    const { data: game } = await supabase
+      .from("games")
+      .select("id, white_player_id, black_player_id, fen, pgn, turn, status, white_clock_ms, black_clock_ms, last_move_at, increment_seconds")
+      .eq("id", gameId)
+      .single();
+
+    if (!game) {
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    }
+
+    if (game.status !== "playing") {
+      return NextResponse.json({ error: "Game is not in progress" }, { status: 400 });
+    }
+
+    // Check it's this player's turn
+    const isWhite = game.white_player_id === user.id;
+    const isBlack = game.black_player_id === user.id;
+
+    if (!isWhite && !isBlack) {
+      return NextResponse.json({ error: "Not a player in this game" }, { status: 403 });
+    }
+
+    if ((isWhite && game.turn !== "white") || (isBlack && game.turn !== "black")) {
+      return NextResponse.json({ error: "Not your turn" }, { status: 400 });
+    }
+
+    // Validate and apply the move
+    const result = validateAndApplyMove(
+      game.fen || "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      move,
+      game.pgn || "",
+      game.white_clock_ms,
+      game.black_clock_ms,
+      game.last_move_at || new Date().toISOString(),
+      game.turn as "white" | "black",
+      game.increment_seconds || 0
+    );
+
+    if (!result.valid) {
+      return NextResponse.json({ error: result.error || "Invalid move" }, { status: 400 });
+    }
+
+    // Update the game in Supabase
+    // Realtime will automatically notify the opponent
+    const gameEnded = result.status !== "playing";
+    const updateData: Record<string, unknown> = {
+      fen: result.fen,
+      pgn: result.pgn,
+      turn: result.turn,
+      move_count: result.moveCount,
+      white_clock_ms: result.whiteClockMs,
+      black_clock_ms: result.blackClockMs,
+      last_move_at: new Date().toISOString(),
+    };
+
+    if (gameEnded) {
+      updateData.status = result.status;
+      updateData.winner = result.winner;
+      updateData.ended_at = new Date().toISOString();
+    }
+
+    const { error } = await supabase
+      .from("games")
+      .update(updateData)
+      .eq("id", gameId);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // If game ended, update ratings
+    if (gameEnded && result.winner) {
+      const { data: whiteProfile } = await supabase
+        .from("profiles")
+        .select("rating, rating_deviation, rating_volatility, games_played, wins, losses, draws")
+        .eq("id", game.white_player_id)
+        .single();
+
+      const { data: blackProfile } = await supabase
+        .from("profiles")
+        .select("rating, rating_deviation, rating_volatility, games_played, wins, losses, draws")
+        .eq("id", game.black_player_id)
+        .single();
+
+      if (whiteProfile && blackProfile) {
+        // Simple Elo update for MVP (can upgrade to Glicko-2 later)
+        const K = 32;
+        const whiteExpected = 1 / (1 + Math.pow(10, (blackProfile.rating - whiteProfile.rating) / 400));
+        const blackExpected = 1 - whiteExpected;
+        const whiteScore = result.winner === "white" ? 1 : result.winner === "black" ? 0 : 0.5;
+        const blackScore = 1 - whiteScore;
+
+        const whiteNewRating = Math.round(whiteProfile.rating + K * (whiteScore - whiteExpected));
+        const blackNewRating = Math.round(blackProfile.rating + K * (blackScore - blackExpected));
+
+        await supabase.from("profiles").update({
+          rating: whiteNewRating,
+          games_played: (whiteProfile.games_played || 0) + 1,
+          wins: (whiteProfile.wins || 0) + (result.winner === "white" ? 1 : 0),
+          losses: (whiteProfile.losses || 0) + (result.winner === "black" ? 1 : 0),
+          draws: (whiteProfile.draws || 0) + (result.status === "draw" ? 1 : 0),
+        }).eq("id", game.white_player_id);
+
+        await supabase.from("profiles").update({
+          rating: blackNewRating,
+          games_played: (blackProfile.games_played || 0) + 1,
+          wins: (blackProfile.wins || 0) + (result.winner === "black" ? 1 : 0),
+          losses: (blackProfile.losses || 0) + (result.winner === "white" ? 1 : 0),
+          draws: (blackProfile.draws || 0) + (result.status === "draw" ? 1 : 0),
+        }).eq("id", game.black_player_id);
+
+        // Store rating changes on game record
+        await supabase.from("games").update({
+          white_rating_change: whiteNewRating - whiteProfile.rating,
+          black_rating_change: blackNewRating - blackProfile.rating,
+        }).eq("id", gameId);
+      }
+    }
+
+    return NextResponse.json({
+      valid: true,
+      fen: result.fen,
+      status: result.status,
+      winner: result.winner,
+      turn: result.turn,
+      moveCount: result.moveCount,
+      whiteClockMs: result.whiteClockMs,
+      blackClockMs: result.blackClockMs,
+    });
+  } catch (e) {
+    return NextResponse.json({ error: "Move failed" }, { status: 500 });
+  }
+}

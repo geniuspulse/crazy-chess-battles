@@ -1,0 +1,92 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+
+export async function POST(req: NextRequest) {
+  try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { gameId } = await req.json();
+
+    if (!gameId) {
+      return NextResponse.json({ error: "Game ID required" }, { status: 400 });
+    }
+
+    const { data: game } = await supabase
+      .from("games")
+      .select("id, white_player_id, black_player_id, status")
+      .eq("id", gameId)
+      .single();
+
+    if (!game || game.status !== "playing") {
+      return NextResponse.json({ error: "Game not found or not in progress" }, { status: 400 });
+    }
+
+    const isWhite = game.white_player_id === user.id;
+    const isBlack = game.black_player_id === user.id;
+
+    if (!isWhite && !isBlack) {
+      return NextResponse.json({ error: "Not a player in this game" }, { status: 403 });
+    }
+
+    // Resign — opponent wins
+    const winner = isWhite ? "black" : "white";
+
+    await supabase.from("games").update({
+      status: "resign",
+      winner,
+      ended_at: new Date().toISOString(),
+    }).eq("id", gameId);
+
+    // Update ratings (same logic as move API)
+    const { data: whiteProfile } = await supabase
+      .from("profiles")
+      .select("rating, games_played, wins, losses, draws")
+      .eq("id", game.white_player_id)
+      .single();
+
+    const { data: blackProfile } = await supabase
+      .from("profiles")
+      .select("rating, games_played, wins, losses, draws")
+      .eq("id", game.black_player_id)
+      .single();
+
+    if (whiteProfile && blackProfile) {
+      const K = 32;
+      const whiteExpected = 1 / (1 + Math.pow(10, (blackProfile.rating - whiteProfile.rating) / 400));
+      const blackExpected = 1 - whiteExpected;
+      const whiteScore = winner === "white" ? 1 : 0;
+      const blackScore = 1 - whiteScore;
+
+      const whiteNewRating = Math.round(whiteProfile.rating + K * (whiteScore - whiteExpected));
+      const blackNewRating = Math.round(blackProfile.rating + K * (blackScore - blackExpected));
+
+      await supabase.from("profiles").update({
+        rating: whiteNewRating,
+        games_played: (whiteProfile.games_played || 0) + 1,
+        wins: (whiteProfile.wins || 0) + (winner === "white" ? 1 : 0),
+        losses: (whiteProfile.losses || 0) + (winner === "black" ? 1 : 0),
+      }).eq("id", game.white_player_id);
+
+      await supabase.from("profiles").update({
+        rating: blackNewRating,
+        games_played: (blackProfile.games_played || 0) + 1,
+        wins: (blackProfile.wins || 0) + (winner === "black" ? 1 : 0),
+        losses: (blackProfile.losses || 0) + (winner === "white" ? 1 : 0),
+      }).eq("id", game.black_player_id);
+
+      await supabase.from("games").update({
+        white_rating_change: whiteNewRating - whiteProfile.rating,
+        black_rating_change: blackNewRating - blackProfile.rating,
+      }).eq("id", gameId);
+    }
+
+    return NextResponse.json({ status: "resigned", winner });
+  } catch {
+    return NextResponse.json({ error: "Resign failed" }, { status: 500 });
+  }
+}
