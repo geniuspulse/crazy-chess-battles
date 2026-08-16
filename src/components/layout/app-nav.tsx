@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Swords, Trophy, TrendingUp, User, LogOut, Wallet, Shield } from "lucide-react";
+import { Home, Swords, Trophy, TrendingUp, User, LogOut, Wallet, Shield, Clock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
@@ -24,6 +24,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
     { href: "/play", label: "Play", icon: Swords },
     { href: "/tournaments", label: "Tournaments", icon: Trophy },
     { href: "/leaderboard", label: "Rankings", icon: TrendingUp },
+    { href: "/history", label: "History", icon: Clock },
     { href: "/wallet", label: "Wallet", icon: Wallet },
     ...(profile?.is_admin ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
   ];

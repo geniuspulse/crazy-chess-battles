@@ -4,12 +4,16 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
 import { useRealtimeGame, type GameState } from "@/hooks/use-realtime-game";
-import { Clock, Flag, Hand } from "lucide-react";
+import { Clock, Flag, Eye, ArrowLeft } from "lucide-react";
+import Link from "next/link";
 
 interface GameClientProps {
   gameId: string;
   initialGame: GameState;
   currentUserId: string;
+  isSpectator?: boolean;
+  whiteName?: string;
+  blackName?: string;
 }
 
 function formatClock(ms: number | null): string {
@@ -23,7 +27,7 @@ function formatClock(ms: number | null): string {
   return `0:${seconds.toString().padStart(2, "0")}`;
 }
 
-export default function GameClient({ gameId, initialGame, currentUserId }: GameClientProps) {
+export default function GameClient({ gameId, initialGame, currentUserId, isSpectator = false, whiteName = "White", blackName = "Black" }: GameClientProps) {
   const { game, connected, error, drawOffer, makeMove, resign, checkTimeout } = useRealtimeGame(gameId, initialGame);
   const [chess] = useState(() => new Chess(game.fen));
   const [fen, setFen] = useState(game.fen);
@@ -31,7 +35,6 @@ export default function GameClient({ gameId, initialGame, currentUserId }: GameC
   const [drawOffered, setDrawOffered] = useState(false);
   const [opponentDrawOffer, setOpponentDrawOffer] = useState(false);
 
-  // Listen for draw offer broadcasts from the hook
   useEffect(() => {
     if (drawOffer === "offer") {
       setOpponentDrawOffer(true);
@@ -56,24 +59,17 @@ export default function GameClient({ gameId, initialGame, currentUserId }: GameC
     return formatClock(Math.max(0, baseMs - elapsed));
   };
 
-  // Sync local FEN when game state updates from realtime
   useEffect(() => {
     setFen(game.fen);
     lastFenRef.current = game.fen;
     try {
       chess.load(game.fen);
-    } catch {
-      // FEN might be invalid during transitions
-    }
+    } catch {}
   }, [game.fen, chess]);
 
-  // Optimistic move: allow the drop visually, then validate via API
-  // If API rejects, the realtime sync will revert the board
   const onDrop = useCallback(
     (sourceSquare: string, targetSquare: string): boolean => {
-      if (!myTurn || gameEnded) return false;
-
-      // Optimistically update local board
+      if (isSpectator || !myTurn || gameEnded) return false;
       try {
         const tempGame = new Chess(fen);
         const move = tempGame.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
@@ -82,13 +78,10 @@ export default function GameClient({ gameId, initialGame, currentUserId }: GameC
       } catch {
         return false;
       }
-
-      // Fire async move to API (don't await)
       makeMove(sourceSquare, targetSquare);
-
       return true;
     },
-    [myTurn, gameEnded, fen, makeMove]
+    [isSpectator, myTurn, gameEnded, fen, makeMove]
   );
 
   const handleResign = async () => {
@@ -98,6 +91,100 @@ export default function GameClient({ gameId, initialGame, currentUserId }: GameC
 
   const myRatingChange = isWhite ? game.white_rating_change : game.black_rating_change;
 
+  // Spectator view
+  if (isSpectator) {
+    return (
+      <div className="space-y-4">
+        {/* Spectator banner */}
+        <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2">
+          <Link href="/play" className="text-sm text-ccb-muted hover:text-ccb-primary flex items-center gap-1">
+            <ArrowLeft className="w-4 h-4" /> Back
+          </Link>
+          <div className="flex items-center gap-2 text-sm text-ccb-muted">
+            <Eye className="w-4 h-4" />
+            <span>Spectating</span>
+          </div>
+        </div>
+
+        {!connected && (
+          <div className="rounded-lg bg-ccb-surface border border-ccb-border text-ccb-muted px-4 py-2 text-sm text-center max-w-[600px] mx-auto">
+            Connecting...
+          </div>
+        )}
+
+        {/* Top player (Black) */}
+        <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center">
+              <span className="text-lg">♚</span>
+            </div>
+            <div>
+              <div className="text-sm font-medium">{blackName}</div>
+              <div className="text-xs text-ccb-muted">{game.black_rating || "—"}</div>
+            </div>
+          </div>
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-mono text-lg font-bold ${
+            game.turn === "black" && !gameEnded ? "bg-ccb-primary/10 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
+          }`}>
+            <Clock className="w-4 h-4" />
+            {getLiveClock("black")}
+          </div>
+        </div>
+
+        {/* Chessboard */}
+        <div className="w-full max-w-[600px] aspect-square mx-auto">
+          <Chessboard options={{
+            position: fen,
+            onPieceDrop: () => false,
+            allowDragging: false,
+            darkSquareStyle: { backgroundColor: "#312e81" },
+            lightSquareStyle: { backgroundColor: "#e0e7ff" },
+            boardStyle: { borderRadius: "8px", overflow: "hidden" },
+          }} />
+        </div>
+
+        {/* Bottom player (White) */}
+        <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center">
+              <span className="text-lg">♔</span>
+            </div>
+            <div>
+              <div className="text-sm font-medium">{whiteName}</div>
+              <div className="text-xs text-ccb-muted">{game.white_rating || "—"}</div>
+            </div>
+          </div>
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-mono text-lg font-bold ${
+            game.turn === "white" && !gameEnded ? "bg-ccb-primary/10 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
+          }`}>
+            <Clock className="w-4 h-4" />
+            {getLiveClock("white")}
+          </div>
+        </div>
+
+        {/* Game over banner */}
+        {gameEnded && (
+          <div className="card max-w-[600px] mx-auto text-center">
+            <div className="text-4xl mb-2">
+              {game.winner === "white" ? "♔" : game.winner === "black" ? "♚" : "🤝"}
+            </div>
+            <h3 className="text-xl font-bold capitalize mb-1">
+              {game.status === "draw" ? "Draw" : game.status === "checkmate" ? "Checkmate" : game.status === "resign" ? "Resignation" : game.status === "timeout" ? "Timeout" : game.status}
+            </h3>
+            <p className="text-sm text-ccb-muted">
+              {game.winner === "white" ? `${whiteName} wins` : game.winner === "black" ? `${blackName} wins` : "Draw"}
+            </p>
+          </div>
+        )}
+
+        <div className="text-center text-xs text-ccb-muted">
+          Move {game.move_count} · {game.time_control} · {game.rated ? "Ranked" : "Casual"}
+        </div>
+      </div>
+    );
+  }
+
+  // Player view (existing logic)
   return (
     <div className="space-y-4">
       {!connected && (

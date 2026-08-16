@@ -163,6 +163,22 @@ export async function POST(req: NextRequest) {
           .update({ status: "active", current_round: 1 })
           .eq("id", tournament.id);
 
+        // Notify all participants
+        for (const p of participants) {
+          await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-gules.vercel.app"}/api/notifications/send`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${process.env.CRON_SECRET}`,
+            },
+            body: JSON.stringify({
+              userId: p.player_id,
+              type: "tournament_started",
+              data: { tournamentName: tournament.name, tournamentId: tournament.id },
+            }),
+          }).catch(() => {});
+        }
+
         started++;
       } catch (e: any) {
         errors.push(`${tournament.name}: ${e.message}`);

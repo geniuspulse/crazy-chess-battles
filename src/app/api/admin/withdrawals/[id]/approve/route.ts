@@ -61,6 +61,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           .update({ status: "completed", charge_id: chargeId })
           .eq("id", id);
 
+        // Notify user
+        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-gules.vercel.app"}/api/notifications/send`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${process.env.CRON_SECRET}`,
+          },
+          body: JSON.stringify({
+            userId: withdrawal.user_id,
+            type: "withdrawal_approved",
+            data: { amount: amountMWK, phone: withdrawal.phone, operator: withdrawal.operator_name },
+          }),
+        }).catch(() => {});
+
         // Log action
         await admin.from("admin_logs").insert({
           admin_id: user.id,

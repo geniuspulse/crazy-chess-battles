@@ -20,6 +20,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const body = await req.json().catch(() => ({}));
     const adminNotes = body.notes || "Rejected by admin";
 
+    // Fetch withdrawal info before refunding
+    const { data: withdrawal } = await admin
+      .from("withdrawals")
+      .select("user_id, amount_cents, phone, operator_name")
+      .eq("id", id)
+      .single();
+
+    if (!withdrawal) return NextResponse.json({ error: "Withdrawal not found" }, { status: 404 });
+
     // Refund wallet and mark rejected
     const { error } = await admin.rpc("refund_withdrawal", {
       p_withdrawal_id: id,
@@ -33,6 +42,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .from("withdrawals")
       .update({ admin_notes: adminNotes })
       .eq("id", id);
+
+    // Notify user
+    await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-gules.vercel.app"}/api/notifications/send`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.CRON_SECRET}`,
+      },
+      body: JSON.stringify({
+        userId: withdrawal.user_id,
+        type: "withdrawal_rejected",
+        data: { amount: Math.floor(withdrawal.amount_cents / 100), reason: adminNotes },
+      }),
+    }).catch(() => {});
 
     // Log action
     await admin.from("admin_logs").insert({

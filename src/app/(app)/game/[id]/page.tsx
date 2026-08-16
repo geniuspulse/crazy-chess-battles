@@ -3,6 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import GameClient from "@/components/game/game-client";
 import type { GameState } from "@/hooks/use-realtime-game";
 
+export const dynamic = "force-dynamic";
+
 export default async function GamePage({
   params,
 }: {
@@ -12,7 +14,6 @@ export default async function GamePage({
   const supabase = await createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
 
   const { data: game } = await supabase
     .from("games")
@@ -21,6 +22,15 @@ export default async function GamePage({
     .single();
 
   if (!game) notFound();
+
+  // Get player profiles for names
+  const [whiteProfile, blackProfile] = await Promise.all([
+    supabase.from("profiles").select("username, display_name, rating").eq("id", game.white_player_id).single(),
+    supabase.from("profiles").select("username, display_name, rating").eq("id", game.black_player_id).single(),
+  ]);
+
+  const isPlayer = user && (user.id === game.white_player_id || user.id === game.black_player_id);
+  const isSpectator = !isPlayer;
 
   const gameState: GameState = {
     id: game.id,
@@ -47,7 +57,14 @@ export default async function GamePage({
 
   return (
     <div className="space-y-6 pb-20 sm:pb-0">
-      <GameClient gameId={id} initialGame={gameState} currentUserId={user.id} />
+      <GameClient
+        gameId={id}
+        initialGame={gameState}
+        currentUserId={user?.id || ""}
+        isSpectator={isSpectator}
+        whiteName={whiteProfile.data?.display_name || whiteProfile.data?.username || "White"}
+        blackName={blackProfile.data?.display_name || blackProfile.data?.username || "Black"}
+      />
     </div>
   );
 }
