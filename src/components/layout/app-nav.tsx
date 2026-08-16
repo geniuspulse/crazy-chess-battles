@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Swords, Trophy, TrendingUp, User, LogOut, Wallet, Shield, Clock } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { Home, Swords, Trophy, TrendingUp, User, Wallet, Shield, Clock } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface Profile {
@@ -16,8 +15,6 @@ interface Profile {
 
 export default function AppNav({ profile }: { profile: Profile | null }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const supabase = createClient();
 
   const navItems = [
     { href: "/dashboard", label: "Home", icon: Home },
@@ -28,12 +25,6 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
     { href: "/wallet", label: "Wallet", icon: Wallet },
     ...(profile?.is_admin ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
   ];
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push("/");
-    router.refresh();
-  };
 
   const getRatingTier = (rating: number | null) => {
     if (!rating) return { label: "Unrated", color: "text-ccb-muted" };
@@ -87,7 +78,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
               <span className="text-sm font-bold">{profile?.rating ?? "—"}</span>
             </div>
             <Link
-              href={profile?.username ? `/profile/${profile.username}` : "/dashboard"}
+              href="/settings"
               className="flex items-center gap-2 text-sm text-ccb-muted hover:text-ccb-text"
             >
               <div className="w-8 h-8 rounded-full bg-ccb-surface border border-ccb-border flex items-center justify-center">
@@ -95,9 +86,6 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
               </div>
               <span>{profile?.username ?? "Player"}</span>
             </Link>
-            <button onClick={handleLogout} className="btn-ghost px-2">
-              <LogOut className="w-4 h-4" />
-            </button>
           </div>
         </div>
       </nav>
@@ -117,16 +105,13 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
               <span className="text-xs font-bold">{profile?.rating ?? "—"}</span>
             </div>
             <Link
-              href={profile?.username ? `/profile/${profile.username}` : "/dashboard"}
+              href="/settings"
               className="flex items-center gap-2 text-ccb-muted"
             >
               <div className="w-7 h-7 rounded-full bg-ccb-surface border border-ccb-border flex items-center justify-center">
                 <User className="w-3.5 h-3.5" />
               </div>
             </Link>
-            <button onClick={handleLogout} className="text-ccb-muted hover:text-ccb-text p-1">
-              <LogOut className="w-4 h-4" />
-            </button>
           </div>
         </div>
       </header>
