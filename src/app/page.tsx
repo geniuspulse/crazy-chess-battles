@@ -134,6 +134,8 @@ export default function LandingPage() {
             <Link href="/signup" className="hover:text-ccb-text transition-colors">Sign Up</Link>
             <Link href="/leaderboard" className="hover:text-ccb-text transition-colors">Leaderboard</Link>
             <Link href="/tournaments" className="hover:text-ccb-text transition-colors">Tournaments</Link>
+            <Link href="/terms" className="hover:text-ccb-text transition-colors">Terms</Link>
+            <Link href="/privacy" className="hover:text-ccb-text transition-colors">Privacy</Link>
           </div>
         </div>
       </footer>
