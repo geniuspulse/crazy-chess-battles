@@ -131,7 +131,7 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
   return (
     <div className="space-y-6 pb-20 sm:pb-0">
       <div>
-        <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+        <h1 className="text-xl sm:text-2xl font-bold">Admin Dashboard</h1>
         <p className="text-sm text-ccb-muted mt-1">Welcome back, {adminName}</p>
       </div>
 
@@ -170,14 +170,14 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
           {/* OVERVIEW */}
           {tab === "overview" && stats && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
                 <StatCard icon={Users} label="Total Users" value={stats.totalUsers || 0} color="text-ccb-primary" />
                 <StatCard icon={Trophy} label="Active Tournaments" value={stats.activeTournaments || 0} color="text-ccb-accent" />
                 <StatCard icon={TrendingUp} label="Games Today" value={stats.gamesToday || 0} color="text-ccb-success" />
                 <StatCard icon={AlertCircle} label="Pending Withdrawals" value={stats.pendingWithdrawals || 0} color="text-ccb-danger" />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-4">
                 <StatCard icon={ArrowDownUp} label="Total Deposits" value={formatMWK(stats.totalDeposits)} color="text-ccb-success" />
                 <StatCard icon={ArrowDownUp} label="Total Withdrawals" value={formatMWK(stats.totalWithdrawals)} color="text-ccb-accent" />
                 <StatCard icon={Wallet} label="Wallet Liquidity" value={formatMWK(stats.walletLiquidity)} color="text-ccb-primary" />

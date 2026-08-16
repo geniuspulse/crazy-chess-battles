@@ -24,7 +24,7 @@ export default async function LeaderboardPage() {
   return (
     <div className="space-y-6 pb-20 sm:pb-0">
       <div>
-        <h1 className="text-2xl font-bold">Leaderboard</h1>
+        <h1 className="text-xl sm:text-2xl font-bold">Leaderboard</h1>
         <p className="text-sm text-ccb-muted mt-1">Top players ranked by rating</p>
       </div>
 
@@ -81,7 +81,7 @@ export default async function LeaderboardPage() {
               >
                 <div className="col-span-1 text-sm text-ccb-muted font-mono">{idx + 1}</div>
                 <div className="col-span-5">
-                  <Link href={`/profile/${player.username}`} className="text-sm font-medium hover:text-ccb-primary">
+                  <Link href={`/profile/${player.username}`} className="text-xs sm:text-sm font-medium hover:text-ccb-primary">
                     {player.display_name || player.username}
                   </Link>
                   <div className={`text-xs ${tier.color}`}>{tier.label}</div>

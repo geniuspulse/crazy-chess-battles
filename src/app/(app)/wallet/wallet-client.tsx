@@ -273,9 +273,9 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
   };
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto pb-20 sm:pb-0">
+    <div className="space-y-4 sm:space-y-6 max-w-2xl mx-auto pb-20 sm:pb-0">
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
+        <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
           <Wallet className="w-6 h-6 text-ccb-primary" />
           Wallet
         </h1>
@@ -381,7 +381,7 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
           {/* Amount selection */}
           <div>
             <label className="text-sm text-ccb-muted mb-2 block">Amount (MWK)</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {QUICK_AMOUNTS.map((amt) => (
                 <button
                   key={amt}
@@ -491,7 +491,7 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
           {/* Amount */}
           <div>
             <label className="text-sm text-ccb-muted mb-2 block">Amount (MWK)</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {QUICK_AMOUNTS.filter(a => a >= 500).map((amt) => (
                 <button
                   key={amt}

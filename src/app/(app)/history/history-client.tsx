@@ -106,26 +106,26 @@ export default function HistoryClient({ profile, games, opponentMap, currentUser
   return (
     <div className="space-y-6 pb-20 sm:pb-0">
       <div>
-        <h1 className="text-2xl font-bold">Game History</h1>
+        <h1 className="text-xl sm:text-lg sm:text-2xl font-bold">Game History</h1>
         <p className="text-sm text-ccb-muted mt-1">{profile?.games_played || 0} games played</p>
       </div>
 
       {/* Stats summary */}
       <div className="grid grid-cols-4 gap-3">
-        <div className="card text-center py-3">
-          <div className="text-2xl font-bold">{stats.total}</div>
+        <div className="card text-center py-2 sm:py-3">
+          <div className="text-lg sm:text-2xl font-bold">{stats.total}</div>
           <div className="text-xs text-ccb-muted">Total</div>
         </div>
-        <div className="card text-center py-3">
-          <div className="text-2xl font-bold text-ccb-success">{stats.wins}</div>
+        <div className="card text-center py-2 sm:py-3">
+          <div className="text-lg sm:text-2xl font-bold text-ccb-success">{stats.wins}</div>
           <div className="text-xs text-ccb-muted">Wins</div>
         </div>
-        <div className="card text-center py-3">
-          <div className="text-2xl font-bold text-ccb-danger">{stats.losses}</div>
+        <div className="card text-center py-2 sm:py-3">
+          <div className="text-lg sm:text-2xl font-bold text-ccb-danger">{stats.losses}</div>
           <div className="text-xs text-ccb-muted">Losses</div>
         </div>
-        <div className="card text-center py-3">
-          <div className="text-2xl font-bold text-ccb-muted">{stats.draws}</div>
+        <div className="card text-center py-2 sm:py-3">
+          <div className="text-lg sm:text-2xl font-bold text-ccb-muted">{stats.draws}</div>
           <div className="text-xs text-ccb-muted">Draws</div>
         </div>
       </div>
@@ -136,7 +136,7 @@ export default function HistoryClient({ profile, games, opponentMap, currentUser
           <button
             key={f.id}
             onClick={() => setFilter(f.id)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+            className={`px-2.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-all ${
               filter === f.id
                 ? "bg-ccb-primary/10 text-ccb-primary border border-ccb-primary/30"
                 : "text-ccb-muted hover:text-ccb-text border border-transparent"

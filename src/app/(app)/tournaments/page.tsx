@@ -70,7 +70,7 @@ export default async function TournamentsPage() {
     <div className="space-y-6 pb-20 sm:pb-0">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Tournaments</h1>
+          <h1 className="text-xl sm:text-2xl font-bold">Tournaments</h1>
           <p className="text-sm text-ccb-muted mt-1">Compete for glory and prizes</p>
         </div>
         {isAdmin && (

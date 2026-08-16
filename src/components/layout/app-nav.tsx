@@ -104,7 +104,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
 
       {/* Mobile bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-ccb-border bg-ccb-surface/95 backdrop-blur-md sm:hidden">
-        <div className="flex items-center justify-around h-16">
+        <div className="flex items-center justify-around h-14 overflow-x-auto no-scrollbar">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname.startsWith(item.href);
@@ -112,12 +112,12 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex flex-col items-center gap-1 px-4 py-2 ${
+                className={`flex flex-col items-center gap-0.5 px-2.5 py-1.5 shrink-0 ${
                   isActive ? "text-ccb-primary" : "text-ccb-muted"
                 }`}
               >
-                <Icon className="w-5 h-5" />
-                <span className="text-xs">{item.label}</span>
+                <Icon className="w-4 h-4" />
+                <span className="text-[10px]">{item.label}</span>
               </Link>
             );
           })}

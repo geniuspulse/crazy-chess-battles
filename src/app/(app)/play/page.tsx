@@ -181,7 +181,7 @@ export default function PlayPage() {
   return (
     <div className="space-y-6 pb-20 sm:pb-0">
       <div>
-        <h1 className="text-2xl font-bold">Play Chess</h1>
+        <h1 className="text-xl sm:text-2xl font-bold">Play Chess</h1>
         <p className="text-sm text-ccb-muted mt-1">Choose your time control and find an opponent</p>
       </div>
 
