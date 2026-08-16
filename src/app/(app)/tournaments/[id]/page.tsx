@@ -205,6 +205,8 @@ export default async function TournamentDetailPage({
             tournamentId={tournament.id}
             status={tournament.status}
             isJoined={isJoined}
+            entryFeeCents={tournament.entry_fee_cents}
+            prizePoolCents={tournament.prize_pool_cents}
             isAdmin={isAdmin}
           />
         </div>

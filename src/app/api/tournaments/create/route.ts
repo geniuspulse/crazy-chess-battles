@@ -75,6 +75,11 @@ export async function POST(req: NextRequest) {
         ends_at: endsAt || null,
         entry_fee_cents: Number(entryFeeCents || 0),
         prize_pool_cents: Number(prizePoolCents || 0),
+        prize_distribution: { type: "percentage", payouts: [
+          { rank: 1, percentage: 50 },
+          { rank: 2, percentage: 30 },
+          { rank: 3, percentage: 20 },
+        ] },
         min_rating: Number(minRating || 0),
         max_rating: maxRating ? Number(maxRating) : null,
         created_by: user.id,

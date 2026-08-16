@@ -9,6 +9,8 @@ interface TournamentActionsProps {
   status: string;
   isJoined: boolean;
   isAdmin: boolean;
+  entryFeeCents: number;
+  prizePoolCents: number;
 }
 
 export default function TournamentActions({
@@ -16,6 +18,8 @@ export default function TournamentActions({
   status,
   isJoined,
   isAdmin,
+  entryFeeCents,
+  prizePoolCents,
 }: TournamentActionsProps) {
   const router = useRouter();
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
@@ -74,7 +78,7 @@ export default function TournamentActions({
                 ) : (
                   <>
                     <UserPlus className="w-4 h-4" />
-                    <span>Join Tournament</span>
+                    <span>{entryFeeCents > 0 ? `Join — MWK ${Math.floor(entryFeeCents / 100).toLocaleString()}` : "Join Tournament"}</span>
                   </>
                 )}
               </button>

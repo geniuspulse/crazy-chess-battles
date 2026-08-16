@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(
   req: NextRequest,
@@ -21,7 +22,7 @@ export async function POST(
     // Verify tournament exists and is upcoming
     const { data: tournament } = await supabase
       .from("tournaments")
-      .select("status")
+      .select("status, entry_fee_cents, prize_pool_cents")
       .eq("id", tournamentId)
       .single();
 
@@ -36,7 +37,32 @@ export async function POST(
       );
     }
 
-    const { error } = await supabase
+    // Check if player paid entry fee — refund if so
+    const admin = createAdminClient();
+    const { data: participant } = await admin
+      .from("tournament_participants")
+      .select("paid_entry_fee")
+      .eq("tournament_id", tournamentId)
+      .eq("player_id", user.id)
+      .single();
+
+    if (participant?.paid_entry_fee && tournament.entry_fee_cents) {
+      // Refund entry fee
+      await admin.rpc("credit_wallet", {
+        p_user_id: user.id,
+        p_amount_cents: tournament.entry_fee_cents,
+      });
+
+      // Deduct from prize pool
+      await admin
+        .from("tournaments")
+        .update({
+          prize_pool_cents: Math.max(0, (tournament.prize_pool_cents || 0) - tournament.entry_fee_cents),
+        })
+        .eq("id", tournamentId);
+    }
+
+    const { error } = await admin
       .from("tournament_participants")
       .delete()
       .eq("tournament_id", tournamentId)
