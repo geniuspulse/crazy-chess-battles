@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound, redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import ChallengeAccept from "./challenge-accept";
+import ChallengeWaiting from "./challenge-waiting";
 
 export default async function ChallengePage({
   params,
@@ -55,27 +56,8 @@ export default async function ChallengePage({
 
   // If user is the challenger, show waiting screen
   if (challenge.challenger_id === user.id) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh] px-4">
-        <div className="card max-w-md w-full text-center space-y-4">
-          <h1 className="text-xl font-bold">Waiting for opponent...</h1>
-          <p className="text-sm text-ccb-muted">
-            Share this link with your friend:
-          </p>
-          <div className="flex items-center gap-2">
-            <input
-              readOnly
-              value={`${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-gules.vercel.app"}/challenge/${id}`}
-              className="input-field flex-1 text-xs"
-              onClick={(e) => (e.target as HTMLInputElement).select()}
-            />
-          </div>
-          <p className="text-xs text-ccb-muted">
-            The game will start automatically when they accept.
-          </p>
-        </div>
-      </div>
-    );
+    const challengeUrl = `${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-gules.vercel.app"}/challenge/${id}`;
+    return <ChallengeWaiting url={challengeUrl} />;
   }
 
   // Check expiry
