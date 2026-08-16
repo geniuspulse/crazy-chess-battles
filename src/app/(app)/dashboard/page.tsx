@@ -29,7 +29,7 @@ export default async function DashboardPage() {
     .limit(3);
 
   const winRate = profile?.games_played
-    ? Math.round((profile.wins / profile.games_played) * 100)
+    ? Math.round(((profile.wins ?? 0) / profile.games_played) * 100)
     : 0;
 
   const stats = [

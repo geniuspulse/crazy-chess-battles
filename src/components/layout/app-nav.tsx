@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Swords, Trophy, TrendingUp, User, Settings, LogOut, Wallet } from "lucide-react";
+import { Home, Swords, Trophy, TrendingUp, User, LogOut, Wallet } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
@@ -85,7 +85,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
               <span className="text-sm font-bold">{profile?.rating ?? "—"}</span>
             </div>
             <Link
-              href={`/profile/${profile?.username ?? ""}`}
+              href={profile?.username ? `/profile/${profile.username}` : "/dashboard"}
               className="flex items-center gap-2 text-sm text-ccb-muted hover:text-ccb-text"
             >
               <div className="w-8 h-8 rounded-full bg-ccb-surface border border-ccb-border flex items-center justify-center">

@@ -39,18 +39,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Challenge not found" }, { status: 404 });
     }
 
-    if (challenge.status !== "pending") {
-      return NextResponse.json({ error: "Challenge is no longer available" }, { status: 400 });
-    }
-
     if (challenge.challenger_id === user.id) {
       return NextResponse.json({ error: "You cannot accept your own challenge" }, { status: 400 });
     }
 
     // Check expiry
-    if (new Date(challenge.expires_at) < new Date()) {
-      await supabase.from("challenges").update({ status: "expired" }).eq("id", challengeId);
+    if (challenge.expires_at && new Date(challenge.expires_at) < new Date()) {
+      await createAdminClient().from("challenges").update({ status: "expired" }).eq("id", challengeId);
       return NextResponse.json({ error: "Challenge has expired" }, { status: 400 });
+    }
+
+    // Atomic claim — only succeeds if status is still 'pending'
+    const admin = createAdminClient();
+    const { data: claimed, error: claimError } = await admin
+      .from("challenges")
+      .update({ status: "accepted", acceptor_id: user.id })
+      .eq("id", challengeId)
+      .eq("status", "pending")
+      .select("*")
+      .single();
+
+    if (claimError || !claimed) {
+      return NextResponse.json({ error: "Challenge is no longer available" }, { status: 400 });
     }
 
     // Determine colors
@@ -69,7 +79,6 @@ export async function POST(req: NextRequest) {
     }
 
     // Create the game using admin client (bypasses RLS for cross-user game creation)
-    const admin = createAdminClient();
     const { data: game, error: gameError } = await admin
       .from("games")
       .insert({
@@ -91,10 +100,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to create game" }, { status: 500 });
     }
 
-    // Update challenge with accepted status + game link
+    // Update challenge with game link (status already set to accepted by atomic claim)
     await admin
       .from("challenges")
-      .update({ status: "accepted", acceptor_id: user.id, game_id: game.id })
+      .update({ game_id: game.id })
       .eq("id", challengeId);
 
     return NextResponse.json({ gameId: game.id });

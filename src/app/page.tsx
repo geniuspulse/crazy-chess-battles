@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Trophy, Swords, TrendingUp, Users, Zap, Shield } from "lucide-react";
+import { Trophy, Swords, TrendingUp, Zap } from "lucide-react";
 
 export default function LandingPage() {
   return (

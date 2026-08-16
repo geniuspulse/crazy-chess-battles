@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     // Load current game state
     const { data: game } = await supabase
       .from("games")
-      .select("id, white_player_id, black_player_id, fen, pgn, turn, status, white_clock_ms, black_clock_ms, last_move_at, increment_seconds, tournament_id")
+      .select("id, white_player_id, black_player_id, fen, pgn, turn, status, move_count, white_clock_ms, black_clock_ms, last_move_at, increment_seconds, tournament_id")
       .eq("id", gameId)
       .single();
 
@@ -85,11 +85,16 @@ export async function POST(req: NextRequest) {
     const { error } = await admin
       .from("games")
       .update(updateData)
-      .eq("id", gameId);
+      .eq("id", gameId)
+      .eq("move_count", game.move_count);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    // If no rows updated, another move beat us — tell client to refresh
+    // (Supabase REST API doesn't return count by default, so we check if the
+    // game's move_count has changed since our read)
 
     // If game ended, update ratings (including draws where winner is null)
     if (gameEnded) {

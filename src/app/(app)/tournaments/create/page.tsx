@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -36,7 +36,13 @@ export default function CreateTournamentPage() {
   const defaultStartsAt = new Date(Date.now() + 3600 * 1000)
     .toISOString()
     .slice(0, 16);
-  const [startsAt, setStartsAt] = useState(defaultStartsAt);
+  const [startsAt, setStartsAt] = useState("");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    setStartsAt(defaultStartsAt);
+  }, []);
   const [endsAt, setEndsAt] = useState('');
 
   const [entryFeeMwk, setEntryFeeMwk] = useState('0');

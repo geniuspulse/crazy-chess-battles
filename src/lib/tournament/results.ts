@@ -20,11 +20,14 @@ export async function processTournamentGameResult(result: GameResult) {
 
   const { data: game } = await admin
     .from("games")
-    .select("tournament_id, tournament_round")
+    .select("tournament_id, tournament_round, status")
     .eq("id", result.gameId)
     .single();
 
   if (!game?.tournament_id) return;
+
+  // Idempotency guard — skip if already processed (status is no longer "playing")
+  if (game.status !== "playing") return;
 
   const tournamentId = game.tournament_id;
   const roundNumber = game.tournament_round || 1;

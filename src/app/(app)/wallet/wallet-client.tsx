@@ -88,12 +88,15 @@ export default function WalletClient({ balanceCents, email, deposits }: WalletCl
       }, 3000);
 
       // Timeout after 2 minutes
-      setTimeout(() => {
+      const timeout = setTimeout(() => {
         clearInterval(interval);
         setPolling(false);
       }, 120000);
 
-      return () => clearInterval(interval);
+      return () => {
+        clearInterval(interval);
+        clearTimeout(timeout);
+      };
     }
   }, [searchParams, router]);
 
@@ -127,7 +130,7 @@ export default function WalletClient({ balanceCents, email, deposits }: WalletCl
     }, 5000);
 
     // Timeout after 3 minutes
-    setTimeout(() => {
+    const timeout = setTimeout(() => {
       clearInterval(interval);
       setPolling(false);
       if (pendingChargeId) {
@@ -136,7 +139,10 @@ export default function WalletClient({ balanceCents, email, deposits }: WalletCl
       }
     }, 180000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
   }, [pendingChargeId, router]);
 
   const handleDeposit = async () => {
