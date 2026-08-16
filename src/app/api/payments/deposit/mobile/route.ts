@@ -7,25 +7,20 @@ export async function POST(req: NextRequest) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { amountCents, phone, operatorRefId, email, firstName, lastName } = await req.json();
 
     if (!amountCents || amountCents < 1000) {
       return NextResponse.json({ error: "Minimum deposit is MWK 10" }, { status: 400 });
     }
-
     if (!phone || !operatorRefId) {
       return NextResponse.json({ error: "Phone number and operator required" }, { status: 400 });
     }
 
-    // Generate unique charge_id
     const chargeId = `ccb_${Date.now()}_${user.id.slice(0, 8)}`;
-
-    // Create deposit record
     const admin = createAdminClient();
+
     const { data: deposit, error: depositError } = await admin
       .from("deposits")
       .insert({
@@ -44,7 +39,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to create deposit record" }, { status: 500 });
     }
 
-    // Call Paychangu API to initiate mobile money charge
     const amount = Math.floor(amountCents / 100).toString();
     const res = await fetch("https://api.paychangu.com/mobile-money/payments/initialize", {
       method: "POST",
@@ -66,19 +60,19 @@ export async function POST(req: NextRequest) {
     const data = await res.json();
 
     if (!res.ok || data.error || data.status === "failed") {
-      // Update deposit as failed
-      await admin
-        .from("deposits")
+      await admin.from("deposits")
         .update({ status: "failed", updated_at: new Date().toISOString() })
         .eq("id", deposit.id);
 
-      return NextResponse.json({ error: data.error || data.message || "Payment initiation failed" }, { status: 400 });
+      // Never leak raw API error — use safe messages only
+      const safeError = data.status === "failed"
+        ? "Payment request failed. Please check your phone number and try again."
+        : "Unable to initiate payment. Please try again later.";
+      return NextResponse.json({ error: safeError }, { status: 400 });
     }
 
-    // Store Paychangu reference
     if (data.reference || data.tx_ref) {
-      await admin
-        .from("deposits")
+      await admin.from("deposits")
         .update({ paychangu_ref: data.reference || data.tx_ref })
         .eq("id", deposit.id);
     }
@@ -89,7 +83,7 @@ export async function POST(req: NextRequest) {
       status: data.status || "pending",
       message: data.message || "Check your phone to authorize the payment",
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || "Server error" }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Server error. Please try again." }, { status: 500 });
   }
 }

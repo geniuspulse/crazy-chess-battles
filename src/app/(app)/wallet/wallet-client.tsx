@@ -193,7 +193,7 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
         const data = await res.json();
 
         if (!res.ok || data.error) {
-          throw new Error(data.error || "Failed to initiate payment");
+          throw new Error(data.error || "Payment failed. Please try again.");
         }
 
         setPendingChargeId(data.chargeId);
@@ -208,7 +208,7 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
         const data = await res.json();
 
         if (!res.ok || data.error) {
-          throw new Error(data.error || "Failed to initiate payment");
+          throw new Error(data.error || "Payment failed. Please try again.");
         }
 
         if (data.checkoutUrl) {
@@ -216,7 +216,7 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
         }
       }
     } catch (err: any) {
-      setError(err.message || "Something went wrong");
+      setError(err.message && err.message.length < 200 ? err.message : "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -255,7 +255,7 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
       const data = await res.json();
 
       if (!res.ok || data.error) {
-        throw new Error(data.error || "Failed to request withdrawal");
+        throw new Error(data.error || "Withdrawal failed. Please try again.");
       }
 
       setSuccess(`Withdrawal request for MWK ${amount.toLocaleString()} submitted. You'll receive it within 24 hours after admin approval.`);
@@ -266,7 +266,7 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
         .then((r) => r.json())
         .then((d) => { if (d.withdrawals) setWithdrawals(d.withdrawals); });
     } catch (err: any) {
-      setError(err.message || "Something went wrong");
+      setError(err.message && err.message.length < 200 ? err.message : "Something went wrong. Please try again.");
     } finally {
       setWithdrawLoading(false);
     }

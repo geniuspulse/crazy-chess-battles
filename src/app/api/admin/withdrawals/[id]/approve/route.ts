@@ -88,14 +88,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       } else {
         // Payout failed — refund the wallet
         await admin.rpc("refund_withdrawal", { p_withdrawal_id: id, p_admin_id: user.id });
-        return NextResponse.json({ error: payoutData.message || "Payout failed, wallet refunded" }, { status: 500 });
+        return NextResponse.json({ error: "Payout failed. Wallet has been refunded." }, { status: 500 });
       }
     } catch (payoutErr: any) {
       // Payout API error — refund the wallet
       await admin.rpc("refund_withdrawal", { p_withdrawal_id: id, p_admin_id: user.id });
-      return NextResponse.json({ error: "Payout API error, wallet refunded: " + payoutErr.message }, { status: 500 });
+      return NextResponse.json({ error: "Payout failed. Wallet has been refunded." }, { status: 500 });
     }
   } catch (err: any) {
-    return NextResponse.json({ error: err.message || "Failed to approve withdrawal" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to approve withdrawal. Please try again." }, { status: 500 });
   }
 }

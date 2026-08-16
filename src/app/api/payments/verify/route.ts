@@ -7,17 +7,11 @@ export async function POST(req: NextRequest) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { chargeId } = await req.json();
+    if (!chargeId) return NextResponse.json({ error: "Charge ID required" }, { status: 400 });
 
-    if (!chargeId) {
-      return NextResponse.json({ error: "Charge ID required" }, { status: 400 });
-    }
-
-    // Fetch deposit record (try charge_id first, then tx_ref for card deposits)
     const admin = createAdminClient();
     let { data: deposit } = await admin
       .from("deposits")
@@ -34,20 +28,10 @@ export async function POST(req: NextRequest) {
       deposit = txDeposit;
     }
 
-    if (!deposit) {
-      return NextResponse.json({ error: "Deposit not found" }, { status: 404 });
-    }
+    if (!deposit) return NextResponse.json({ error: "Deposit not found" }, { status: 404 });
+    if (deposit.user_id !== user.id) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    if (deposit.status === "success") return NextResponse.json({ status: "success", depositId: deposit.id });
 
-    if (deposit.user_id !== user.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
-
-    // Already processed
-    if (deposit.status === "success") {
-      return NextResponse.json({ status: "success", depositId: deposit.id });
-    }
-
-    // Verify with Paychangu
     let verifyUrl: string;
     if (deposit.method === "mobile_money") {
       verifyUrl = `https://api.paychangu.com/mobile-money/verify/${chargeId}`;
@@ -65,23 +49,18 @@ export async function POST(req: NextRequest) {
     const data = await res.json();
 
     if (data.status === "success" || data.data?.status === "success") {
-      // Credit wallet atomically
       await admin.rpc("credit_wallet", {
         p_user_id: user.id,
         p_amount_cents: deposit.amount_cents,
       });
-
-      // Update deposit
-      await admin
-        .from("deposits")
+      await admin.from("deposits")
         .update({ status: "success", updated_at: new Date().toISOString() })
         .eq("id", deposit.id);
-
       return NextResponse.json({ status: "success", depositId: deposit.id, amount: deposit.amount_cents });
     }
 
     return NextResponse.json({ status: data.status || "pending", depositId: deposit.id });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || "Server error" }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Verification failed. Please try again." }, { status: 500 });
   }
 }

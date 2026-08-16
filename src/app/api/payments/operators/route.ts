@@ -10,8 +10,11 @@ export async function GET() {
     });
 
     const data = await res.json();
+    if (!res.ok || data.error) {
+      return NextResponse.json({ error: "Unable to load payment operators. Please try again." }, { status: 502 });
+    }
     return NextResponse.json(data);
-  } catch (e: any) {
-    return NextResponse.json({ error: "Failed to fetch operators" }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Failed to fetch operators. Please try again." }, { status: 500 });
   }
 }

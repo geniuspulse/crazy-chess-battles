@@ -34,6 +34,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ withdrawalId, status: "pending" });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message || "Failed to request withdrawal" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to request withdrawal. Please try again." }, { status: 500 });
   }
 }

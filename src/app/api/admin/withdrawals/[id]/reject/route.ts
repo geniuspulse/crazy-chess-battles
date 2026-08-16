@@ -68,6 +68,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ status: "rejected" });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message || "Failed to reject withdrawal" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to reject withdrawal. Please try again." }, { status: 500 });
   }
 }
