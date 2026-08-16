@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
 import { useRealtimeGame, type GameState } from "@/hooks/use-realtime-game";
-import { Clock, Flag } from "lucide-react";
+import { Clock, Flag, Hand } from "lucide-react";
 
 interface GameClientProps {
   gameId: string;
@@ -28,6 +28,8 @@ export default function GameClient({ gameId, initialGame, currentUserId }: GameC
   const [chess] = useState(() => new Chess(game.fen));
   const [fen, setFen] = useState(game.fen);
   const [showResignConfirm, setShowResignConfirm] = useState(false);
+  const [drawOffered, setDrawOffered] = useState(false);
+  const [opponentDrawOffer, setOpponentDrawOffer] = useState(false);
   const lastFenRef = useRef(game.fen);
 
   const isWhite = game.white_player_id === currentUserId;

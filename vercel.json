@@ -2,7 +2,11 @@
   "crons": [
     {
       "path": "/api/matchmaking/pair",
-      "schedule": "0 3 * * *"
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/game/timeout",
+      "schedule": "* * * * *"
     }
   ]
 }

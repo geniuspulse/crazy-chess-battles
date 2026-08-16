@@ -19,6 +19,18 @@ function formatPrizePool(cents: number | null | undefined): string {
 export default async function TournamentsPage() {
   const supabase = await createClient();
 
+  // Get user + admin status
+  const { data: { user } } = await supabase.auth.getUser();
+  let isAdmin = false;
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("is_admin")
+      .eq("id", user.id)
+      .single();
+    isAdmin = profile?.is_admin ?? false;
+  }
+
   const { data: tournaments } = await supabase
     .from("tournaments")
     .select(`
@@ -53,13 +65,15 @@ export default async function TournamentsPage() {
           <h1 className="text-2xl font-bold">Tournaments</h1>
           <p className="text-sm text-ccb-muted mt-1">Compete for glory and prizes</p>
         </div>
-        <Link
-          href="/tournaments/create"
-          className="btn-primary inline-flex items-center gap-2 text-sm px-3 sm:px-4"
-        >
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">Create Tournament</span>
-        </Link>
+        {isAdmin && (
+          <Link
+            href="/tournaments/create"
+            className="btn-primary inline-flex items-center gap-2 text-sm px-3 sm:px-4"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Create Tournament</span>
+          </Link>
+        )}
       </div>
 
       {tournaments && tournaments.length > 0 ? (

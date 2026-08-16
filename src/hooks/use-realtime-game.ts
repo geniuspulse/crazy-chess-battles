@@ -31,6 +31,7 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
   const [game, setGame] = useState<GameState>(initialState);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [drawOffer, setDrawOffer] = useState<string | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   // Subscribe to real-time updates
@@ -56,8 +57,11 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
       .on("presence", { event: "join" }, () => {
         setConnected(true);
       })
-      .on("broadcast", { event: "draw_offer" }, () => {
-        setError("Opponent offers a draw");
+      .on("broadcast", { event: "draw_offer" }, (payload) => {
+        setDrawOffer("offer");
+      })
+      .on("broadcast", { event: "draw_declined" }, () => {
+        setDrawOffer(null);
       })
       .subscribe((status) => {
         if (status === "SUBSCRIBED") setConnected(true);
@@ -139,5 +143,5 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
     }
   }, [gameId]);
 
-  return { game, connected, error, makeMove, resign, setGame };
+  return { game, connected, error, drawOffer, makeMove, resign, setGame };
 }
