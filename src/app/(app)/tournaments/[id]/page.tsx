@@ -223,16 +223,6 @@ export default async function TournamentDetailPage({
 
           <div className="space-y-1">
             <div className="flex items-center gap-1.5 text-xs text-ccb-muted">
-              <Award className="w-3.5 h-3.5 text-ccb-accent" />
-              <span>Prize Pool</span>
-            </div>
-            <div className="font-semibold text-ccb-accent">
-              {formatPrizePool(tournament.prize_pool_cents)}
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <div className="flex items-center gap-1.5 text-xs text-ccb-muted">
               <Users className="w-3.5 h-3.5" />
               <span>Players</span>
             </div>

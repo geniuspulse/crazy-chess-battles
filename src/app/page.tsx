@@ -122,7 +122,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-ccb-border py-6 sm:py-8 px-4">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row-reverse items-center justify-between gap-3 sm:gap-4">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded bg-ccb-primary flex items-center justify-center shrink-0">
               <span className="text-white text-sm">♞</span>
