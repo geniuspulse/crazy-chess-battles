@@ -73,7 +73,7 @@ export default async function TournamentsPage() {
               <Link
                 key={t.id}
                 href={`/tournaments/${t.id}`}
-                className="card hover:border-ccb-primary transition-colors group flex flex-col justify-between"
+                className="card card-hover group flex flex-col justify-between"
               >
                 <div>
                   <div className="flex items-start justify-between mb-3">

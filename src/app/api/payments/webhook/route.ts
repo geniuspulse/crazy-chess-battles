@@ -5,9 +5,13 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // Verify webhook authenticity via shared secret
+    // Verify webhook authenticity via shared secret (required)
     const webhookSecret = req.headers.get("x-paychangu-secret");
-    if (process.env.PAYCHANGU_WEBHOOK_SECRET && webhookSecret !== process.env.PAYCHANGU_WEBHOOK_SECRET) {
+    if (!process.env.PAYCHANGU_WEBHOOK_SECRET) {
+      console.error("PAYCHANGU_WEBHOOK_SECRET not configured");
+      return NextResponse.json({ error: "Webhook not configured" }, { status: 503 });
+    }
+    if (webhookSecret !== process.env.PAYCHANGU_WEBHOOK_SECRET) {
       return NextResponse.json({ error: "Invalid webhook signature" }, { status: 401 });
     }
 

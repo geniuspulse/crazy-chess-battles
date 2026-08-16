@@ -59,3 +59,96 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #3a3a4a;
 }
+
+/* Animations */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px 0 rgba(139, 92, 246, 0.3);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 40px 8px rgba(139, 92, 246, 0.5);
+    transform: scale(1.05);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 1.8s ease-in-out infinite;
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(139, 92, 246, 0.1) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
+
+/* Card hover effects */
+.card-hover {
+  @apply transition-all duration-200 hover:border-ccb-primary/50 hover:shadow-lg hover:shadow-ccb-primary/5;
+}
+
+/* Time control button hover */
+.tc-btn {
+  @apply card transition-all duration-200 text-left;
+}
+
+.tc-btn:hover:not(.tc-active) {
+  @apply border-ccb-border bg-ccb-surface;
+  transform: translateY(-2px);
+}
+
+.tc-active {
+  @apply border-ccb-primary ring-2 ring-ccb-primary/30;
+}
+
+/* Play button pulse when ready */
+.btn-play {
+  @apply btn-primary w-full text-base py-3;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-play::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.1),
+    transparent
+  );
+  transition: left 0.5s;
+}
+
+.btn-play:hover::before {
+  left: 100%;
+}

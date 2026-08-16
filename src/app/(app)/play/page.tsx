@@ -159,7 +159,7 @@ export default function PlayPage() {
 
   if (searching) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6">
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 animate-slide-up">
         <div className="relative">
           <div className="w-24 h-24 rounded-full bg-ccb-primary/10 flex items-center justify-center animate-pulse-glow">
             <Swords className="w-12 h-12 text-ccb-primary" />
@@ -202,10 +202,8 @@ export default function PlayPage() {
               <button
                 key={tc.id}
                 onClick={() => setSelectedTC(tc.id)}
-                className={`card flex items-center gap-3 transition-all text-left ${
-                  isSelected
-                    ? "border-ccb-primary ring-2 ring-ccb-primary/30"
-                    : "hover:border-ccb-border"
+                className={`tc-btn flex items-center gap-3 text-left ${
+                  isSelected ? "tc-active" : ""
                 }`}
               >
                 <Icon className={`w-5 h-5 ${isSelected ? "text-ccb-primary" : "text-ccb-muted"}`} />
@@ -220,7 +218,7 @@ export default function PlayPage() {
       </div>
 
       {/* Rated toggle */}
-      <div className="flex items-center justify-between card">
+      <div className="flex items-center justify-between card card-hover">
         <div>
           <h3 className="font-medium">Ranked</h3>
           <p className="text-sm text-ccb-muted">Rated games affect your rating</p>
@@ -240,7 +238,7 @@ export default function PlayPage() {
       </div>
 
       {/* Challenge a Friend */}
-      <div className="card space-y-3">
+      <div className="card card-hover space-y-3">
         <h3 className="font-medium flex items-center gap-2">
           <Link2 className="w-4 h-4 text-ccb-primary" />
           Challenge a Friend
@@ -282,7 +280,7 @@ export default function PlayPage() {
       </div>
 
       {/* Play button */}
-      <button onClick={handleQuickMatch} className="btn-primary w-full text-base py-3">
+      <button onClick={handleQuickMatch} className="btn-play">
         <Swords className="w-5 h-5 mr-2" />
         Quick Match
       </button>
