@@ -22,8 +22,8 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
   const navItems = [
     { href: "/dashboard", label: "Home", icon: Home },
     { href: "/play", label: "Play", icon: Swords },
-    { href: "/tournaments", label: "Tournaments", icon: Trophy },
-    { href: "/leaderboard", label: "Rankings", icon: TrendingUp },
+    { href: "/tournaments", label: "Tournos", icon: Trophy },
+    { href: "/leaderboard", label: "Ranks", icon: TrendingUp },
     { href: "/history", label: "History", icon: Clock },
     { href: "/wallet", label: "Wallet", icon: Wallet },
     ...(profile?.is_admin ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
@@ -49,15 +49,15 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
 
   return (
     <>
-      {/* Desktop nav */}
-      <nav className="border-b border-ccb-border bg-ccb-surface/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between h-16">
+      {/* Desktop nav — full nav bar, hidden on mobile */}
+      <nav className="hidden sm:block border-b border-ccb-border bg-ccb-surface/50 backdrop-blur-sm sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between h-16">
           <div className="flex items-center gap-8">
             <Link href="/dashboard" className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-ccb-primary flex items-center justify-center">
                 <span className="text-white font-bold">♞</span>
               </div>
-              <span className="font-bold hidden sm:inline">CCB</span>
+              <span className="font-bold">CCB</span>
             </Link>
             <div className="flex items-center gap-1">
               {navItems.map((item) => {
@@ -74,7 +74,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
                     }`}
                   >
                     <Icon className="w-4 h-4" />
-                    <span className="hidden sm:inline">{item.label}</span>
+                    <span>{item.label}</span>
                   </Link>
                 );
               })}
@@ -82,7 +82,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2">
+            <div className="flex items-center gap-2">
               <span className={`text-sm font-medium ${tier.color}`}>{tier.label}</span>
               <span className="text-sm font-bold">{profile?.rating ?? "—"}</span>
             </div>
@@ -93,7 +93,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
               <div className="w-8 h-8 rounded-full bg-ccb-surface border border-ccb-border flex items-center justify-center">
                 <User className="w-4 h-4" />
               </div>
-              <span className="hidden sm:inline">{profile?.username ?? "Player"}</span>
+              <span>{profile?.username ?? "Player"}</span>
             </Link>
             <button onClick={handleLogout} className="btn-ghost px-2">
               <LogOut className="w-4 h-4" />
@@ -102,8 +102,40 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
         </div>
       </nav>
 
-      {/* Mobile bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-ccb-border bg-ccb-surface/95 backdrop-blur-md sm:hidden">
+      {/* Mobile header — compact, just logo + rating + profile */}
+      <header className="sm:hidden sticky top-0 z-50 border-b border-ccb-border bg-ccb-dark/90 backdrop-blur-md">
+        <div className="flex items-center justify-between px-4 h-12">
+          <Link href="/dashboard" className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-ccb-primary flex items-center justify-center">
+              <span className="text-white font-bold text-sm">♞</span>
+            </div>
+            <span className="font-bold text-sm">CCB</span>
+          </Link>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className={`text-xs font-medium ${tier.color}`}>{tier.label}</span>
+              <span className="text-xs font-bold">{profile?.rating ?? "—"}</span>
+            </div>
+            <Link
+              href={profile?.username ? `/profile/${profile.username}` : "/dashboard"}
+              className="flex items-center gap-2 text-ccb-muted"
+            >
+              <div className="w-7 h-7 rounded-full bg-ccb-surface border border-ccb-border flex items-center justify-center">
+                <User className="w-3.5 h-3.5" />
+              </div>
+            </Link>
+            <button onClick={handleLogout} className="text-ccb-muted hover:text-ccb-text p-1">
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Mobile bottom nav — fixed, safe-area aware, won't disappear on scroll */}
+      <nav 
+        className="fixed bottom-0 left-0 right-0 z-[100] border-t border-ccb-border bg-ccb-surface/95 backdrop-blur-md sm:hidden"
+        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+      >
         <div className="flex items-center justify-around h-14 overflow-x-auto no-scrollbar">
           {navItems.map((item) => {
             const Icon = item.icon;
