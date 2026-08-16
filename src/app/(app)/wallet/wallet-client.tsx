@@ -22,8 +22,8 @@ interface WalletClientProps {
 const QUICK_AMOUNTS = [500, 1000, 2000, 5000, 10000, 25000]; // in MWK
 
 const OPERATORS = [
-  { id: "20be6c20-adeb-4b5b-a7ba-0769820df4fb", name: "TNM Mpamba", color: "bg-blue-500" },
-  { id: "AIRTEL_REF_PLACEHOLDER", name: "Airtel Money", color: "bg-red-500" },
+  { id: "27494cb5-ba9e-437f-a114-4e7a7686bcca", name: "TNM Mpamba", color: "bg-blue-500" },
+  { id: "20be6c20-adeb-4b5b-a7ba-0769820df4fb", name: "Airtel Money", color: "bg-red-500" },
 ];
 
 export default function WalletClient({ balanceCents, email, deposits }: WalletClientProps) {
