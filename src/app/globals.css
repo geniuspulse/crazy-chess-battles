@@ -37,6 +37,9 @@
   .input {
     @apply w-full rounded-lg bg-ccb-surface border border-ccb-border px-4 py-2.5 text-ccb-text placeholder:text-ccb-muted focus:outline-none focus:ring-2 focus:ring-ccb-primary focus:border-transparent;
   }
+  .input-field {
+    @apply w-full rounded-lg bg-ccb-surface border border-ccb-border px-4 py-2.5 text-ccb-text placeholder:text-ccb-muted focus:outline-none focus:ring-2 focus:ring-ccb-primary focus:border-transparent;
+  }
   .badge {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
   }

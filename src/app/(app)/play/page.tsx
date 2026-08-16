@@ -20,6 +20,7 @@ export default function PlayPage() {
   const [searching, setSearching] = useState(false);
   const [challengeUrl, setChallengeUrl] = useState<string | null>(null);
   const [creatingChallenge, setCreatingChallenge] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [matchError, setMatchError] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createClient();
@@ -125,6 +126,8 @@ export default function PlayPage() {
   const handleCopyLink = () => {
     if (challengeUrl) {
       navigator.clipboard.writeText(challengeUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -229,8 +232,9 @@ export default function PlayPage() {
                 onClick={(e) => (e.target as HTMLInputElement).select()}
               />
               <button onClick={handleCopyLink} className="btn-secondary px-3">
-                <Copy className="w-4 h-4" />
+                {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
               </button>
+              {copied && <span className="text-xs text-green-400">Copied!</span>}
             </div>
             <a href={challengeUrl} target="_blank" className="text-xs text-ccb-primary hover:underline">
               Open challenge page →
@@ -240,7 +244,7 @@ export default function PlayPage() {
           <button
             onClick={handleCreateChallenge}
             disabled={creatingChallenge}
-            className="btn-secondary w-full flex items-center justify-center gap-2"
+            className="btn-primary w-full flex items-center justify-center gap-2"
           >
             {creatingChallenge ? (
               <><span className="animate-pulse">Generating...</span></>
