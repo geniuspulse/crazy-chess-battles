@@ -88,34 +88,50 @@ export async function POST(
       .select("id, rating")
       .in("id", playerIds);
 
+    // Fetch previous pairings to avoid rematches
+    const { data: previousGames } = await admin
+      .from("games")
+      .select("white_player_id, black_player_id")
+      .eq("tournament_id", tournamentId);
+    const previousMatchups = new Set<string>();
+    for (const g of previousGames || []) {
+      previousMatchups.add(`${g.white_player_id}|${g.black_player_id}`);
+      previousMatchups.add(`${g.black_player_id}|${g.white_player_id}`);
+    }
+
     // Swiss pairing for next round:
     // Group by score, pair within score groups, avoid rematches
     const pairings: Array<{ white: string; black: string; bye?: string }> = [];
     const used = new Set<string>();
 
-    // Simple approach: sort by score, pair adjacent players who haven't played each other
-    for (let i = 0; i < participants.length; i++) {
-      if (used.has(participants[i].player_id)) continue;
+    // Sort by score descending, then by seed for tiebreak
+    const sorted = [...participants].sort((a, b) => (b.score || 0) - (a.score || 0) || (a.seed || 0) - (b.seed || 0));
+
+    for (let i = 0; i < sorted.length; i++) {
+      if (used.has(sorted[i].player_id)) continue;
 
       let paired = false;
-      for (let j = i + 1; j < participants.length; j++) {
-        if (used.has(participants[j].player_id)) continue;
+      for (let j = i + 1; j < sorted.length; j++) {
+        if (used.has(sorted[j].player_id)) continue;
 
-        // Check for previous pairing (simplified — skip rematch check for MVP)
+        // Skip if these players have already been paired in this tournament
+        const key = `${sorted[i].player_id}|${sorted[j].player_id}`;
+        if (previousMatchups.has(key)) continue;
+
         pairings.push({
-          white: participants[i].player_id,
-          black: participants[j].player_id,
+          white: sorted[i].player_id,
+          black: sorted[j].player_id,
         });
-        used.add(participants[i].player_id);
-        used.add(participants[j].player_id);
+        used.add(sorted[i].player_id);
+        used.add(sorted[j].player_id);
         paired = true;
         break;
       }
 
       if (!paired) {
         // Bye
-        pairings.push({ white: "", black: "", bye: participants[i].player_id });
-        used.add(participants[i].player_id);
+        pairings.push({ white: "", black: "", bye: sorted[i].player_id });
+        used.add(sorted[i].player_id);
       }
     }
 

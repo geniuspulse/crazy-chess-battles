@@ -58,7 +58,7 @@ export default function SignupPage() {
 
         <form onSubmit={handleSignup} className="card space-y-4">
           <div>
-            <label className="text-sm font-medium block mb-1.5">Username</label>
+            <label htmlFor="username" className="text-sm font-medium block mb-1.5">Username</label>
             <input
               type="text"
               value={username}
@@ -71,7 +71,7 @@ export default function SignupPage() {
             />
           </div>
           <div>
-            <label className="text-sm font-medium block mb-1.5">Email</label>
+            <label htmlFor="email" className="text-sm font-medium block mb-1.5">Email</label>
             <input
               type="email"
               value={email}
@@ -82,7 +82,7 @@ export default function SignupPage() {
             />
           </div>
           <div>
-            <label className="text-sm font-medium block mb-1.5">Password</label>
+            <label htmlFor="password" className="text-sm font-medium block mb-1.5">Password</label>
             <input
               type="password"
               value={password}
