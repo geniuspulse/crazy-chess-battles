@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// games.time_control only accepts these 4 base categories; challenge time controls
+// like "blitz3" (3+2) and "rapid15" (15+10) need to map down to their base category.
+const GAME_TIME_CONTROL_MAP: Record<string, string> = {
+  bullet: "bullet",
+  blitz3: "blitz",
+  blitz: "blitz",
+  rapid: "rapid",
+  rapid15: "rapid",
+  classical: "classical",
+};
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
@@ -65,13 +76,13 @@ export async function POST(req: NextRequest) {
         white_player_id: whitePlayer,
         black_player_id: blackPlayer,
         status: "playing",
-        time_control: challenge.time_control,
+        time_control: GAME_TIME_CONTROL_MAP[challenge.time_control] || "blitz",
         initial_minutes: challenge.initial_minutes,
         increment_seconds: challenge.increment_seconds,
         white_clock_ms: challenge.initial_minutes * 60 * 1000,
         black_clock_ms: challenge.initial_minutes * 60 * 1000,
         last_move_at: new Date().toISOString(),
-        is_rated: challenge.rated,
+        rated: challenge.rated,
       })
       .select("id")
       .single();
