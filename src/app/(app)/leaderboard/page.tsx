@@ -30,7 +30,7 @@ export default async function LeaderboardPage() {
 
       {/* Top 3 podium */}
       {players && players.length >= 3 && (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
           {players.slice(0, 3).map((player, idx) => {
             const tier = getTier(player.rating);
             const medals = ["text-yellow-400", "text-gray-400", "text-orange-400"];
@@ -64,7 +64,7 @@ export default async function LeaderboardPage() {
 
       {/* Full leaderboard */}
       <div className="card overflow-hidden p-0">
-        <div className="px-6 py-3 border-b border-ccb-border text-xs text-ccb-muted grid grid-cols-12 gap-4">
+        <div className="px-3 sm:px-6 py-3 border-b border-ccb-border text-xs text-ccb-muted grid grid-cols-12 gap-2 sm:gap-4">
           <div className="col-span-1">#</div>
           <div className="col-span-5">Player</div>
           <div className="col-span-2 text-center">Rating</div>
@@ -77,7 +77,7 @@ export default async function LeaderboardPage() {
             return (
               <div
                 key={player.username}
-                className="px-6 py-3 grid grid-cols-12 gap-4 items-center hover:bg-ccb-surface transition-colors"
+                className="px-3 sm:px-6 py-3 grid grid-cols-12 gap-2 sm:gap-4 items-center hover:bg-ccb-surface transition-colors"
               >
                 <div className="col-span-1 text-sm text-ccb-muted font-mono">{idx + 1}</div>
                 <div className="col-span-5">

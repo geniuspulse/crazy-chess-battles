@@ -55,10 +55,10 @@ export default async function TournamentsPage() {
         </div>
         <Link
           href="/tournaments/create"
-          className="btn-primary inline-flex items-center gap-2 text-sm"
+          className="btn-primary inline-flex items-center gap-2 text-sm px-3 sm:px-4"
         >
           <Plus className="w-4 h-4" />
-          <span>Create Tournament</span>
+          <span className="hidden sm:inline">Create Tournament</span>
         </Link>
       </div>
 

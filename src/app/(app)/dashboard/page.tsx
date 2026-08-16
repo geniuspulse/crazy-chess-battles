@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import { Swords, Trophy, TrendingUp, Clock } from "lucide-react";
+import { Swords, Trophy, TrendingUp, Clock, Wallet } from "lucide-react";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -32,11 +32,15 @@ export default async function DashboardPage() {
     ? Math.round(((profile.wins ?? 0) / profile.games_played) * 100)
     : 0;
 
+  const walletBalance = profile?.wallet_balance_cents
+    ? `MK ${Math.floor(profile.wallet_balance_cents / 100).toLocaleString("en-US")}`
+    : "MK 0";
+
   const stats = [
     { label: "Rating", value: profile?.rating ?? "—", icon: TrendingUp, color: "text-ccb-primary" },
     { label: "Games", value: profile?.games_played ?? 0, icon: Swords, color: "text-ccb-text" },
     { label: "Win Rate", value: `${winRate}%`, icon: Clock, color: "text-ccb-success" },
-    { label: "Tournaments", value: profile?.tournaments_played ?? 0, icon: Trophy, color: "text-ccb-accent" },
+    { label: "Wallet", value: walletBalance, icon: Wallet, color: "text-ccb-accent" },
   ];
 
   return (
@@ -68,7 +72,7 @@ export default async function DashboardPage() {
       {/* Quick play CTA */}
       <Link
         href="/play"
-        className="block card hover:border-ccb-primary transition-colors group"
+        className="block card card-hover group"
       >
         <div className="flex items-center justify-between">
           <div>
@@ -80,6 +84,25 @@ export default async function DashboardPage() {
                 <h3 className="font-bold text-lg">Quick Match</h3>
                 <p className="text-sm text-ccb-muted">Find an opponent and start playing</p>
               </div>
+            </div>
+          </div>
+          <div className="text-ccb-primary group-hover:translate-x-1 transition-transform">→</div>
+        </div>
+      </Link>
+
+      {/* Wallet CTA */}
+      <Link
+        href="/wallet"
+        className="block card card-hover group"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-ccb-accent/10 flex items-center justify-center">
+              <Wallet className="w-6 h-6 text-ccb-accent" />
+            </div>
+            <div>
+              <h3 className="font-bold text-lg">Wallet</h3>
+              <p className="text-sm text-ccb-muted">Balance: {walletBalance}</p>
             </div>
           </div>
           <div className="text-ccb-primary group-hover:translate-x-1 transition-transform">→</div>

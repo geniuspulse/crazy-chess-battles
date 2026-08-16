@@ -12,6 +12,8 @@
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "chess.js": "^1.0.0",
     "clsx": "^2.1.1",
     "glicko2": "^1.2.0",
@@ -19,6 +21,7 @@
     "next": "^15.0.3",
     "react": "^19.0.0",
     "react-chessboard": "^5.0.0",
+    "react-dom": "^19.2.8",
     "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {

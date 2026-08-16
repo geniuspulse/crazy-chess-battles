@@ -27,7 +27,8 @@ export default function LoginPage() {
       setError(error.message);
       setLoading(false);
     } else {
-      const params = new URLSearchParams(window.location.search); router.push(params.get("redirect") || "/dashboard");
+      const params = new URLSearchParams(window.location.search);
+      router.push(params.get("redirect") || "/dashboard");
       router.refresh();
     }
   };
