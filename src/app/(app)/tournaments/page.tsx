@@ -51,6 +51,14 @@ export default async function TournamentsPage() {
     .order("starts_at", { ascending: false })
     .limit(20);
 
+  // Auto-start tournaments past their scheduled time (fire-and-forget)
+  if (tournaments?.some(t => t.status === "upcoming" && new Date(t.starts_at) < new Date())) {
+    fetch(`\${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/tournaments/auto-start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    }).catch(() => {});
+  }
+
   const statusColors: Record<string, string> = {
     upcoming: "text-ccb-accent bg-ccb-accent/10 border-ccb-accent/20",
     active: "text-ccb-success bg-ccb-success/10 border-ccb-success/20",

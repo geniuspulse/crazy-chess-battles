@@ -305,6 +305,44 @@ export default async function TournamentDetailPage({
         </div>
       </div>
 
+      {/* Prize Distribution Breakdown */}
+      {tournament.prize_pool_cents && tournament.prize_pool_cents > 0 && (
+        <div className="card space-y-4">
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <Award className="w-5 h-5 text-ccb-accent" />
+            Prize Distribution
+          </h2>
+          <div className="space-y-3">
+            {[
+              { rank: 1, pct: 50, label: "1st Place", color: "text-ccb-accent" },
+              { rank: 2, pct: 30, label: "2nd Place", color: "text-ccb-silver" },
+              { rank: 3, pct: 20, label: "3rd Place", color: "text-ccb-bronze" },
+            ].map((tier) => {
+              const amount = Math.floor(tournament.prize_pool_cents * (tier.pct / 100));
+              return (
+                <div key={tier.rank} className="flex items-center justify-between p-3 rounded-lg bg-ccb-surface/50">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full bg-ccb-surface flex items-center justify-center text-sm font-bold ${tier.color}`}>
+                      {tier.rank}
+                    </div>
+                    <span className="text-sm font-medium">{tier.label}</span>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold text-ccb-accent">MWK {Math.floor(amount / 100).toLocaleString("en-US")}</div>
+                    <div className="text-xs text-ccb-muted">{tier.pct}% of prize pool</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {tournament.status === "finished" && (
+            <p className="text-xs text-ccb-muted pt-2 border-t border-ccb-surface">
+              Prizes have been distributed to winners' wallets.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Current Round — pairings & games */}
       {currentRound && (
         <div className="card space-y-4">
