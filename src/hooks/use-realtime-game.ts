@@ -78,7 +78,30 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
     };
   }, [gameId, supabase]);
 
-  // Submit a move
+  // Check for timeout (server-side verification, client-callable)
+  const checkTimeout = useCallback(async () => {
+    try {
+      const res = await fetch("/api/game/timeout-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.timedOut) {
+          setGame((prev) => ({
+            ...prev,
+            status: "timeout",
+            winner: data.winner,
+          }));
+        }
+      }
+    } catch {
+      // Silent fail
+    }
+  }, [gameId]);
+
+
   const makeMove = useCallback(
     async (from: string, to: string, promotion?: string) => {
       try {
@@ -143,5 +166,5 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
     }
   }, [gameId]);
 
-  return { game, connected, error, drawOffer, makeMove, resign, setGame };
+  return { game, connected, error, drawOffer, makeMove, resign, checkTimeout, setGame };
 }

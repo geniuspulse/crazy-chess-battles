@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     // Load current game state
     const { data: game } = await supabase
       .from("games")
-      .select("id, white_player_id, black_player_id, fen, pgn, turn, status, move_count, white_clock_ms, black_clock_ms, last_move_at, increment_seconds, tournament_id")
+      .select("id, white_player_id, black_player_id, fen, pgn, turn, status, move_count, white_clock_ms, black_clock_ms, last_move_at, increment_seconds, tournament_id, created_at")
       .eq("id", gameId)
       .single();
 
@@ -46,7 +46,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Not your turn" }, { status: 400 });
     }
 
-    // Validate and apply the move
+    // Check if the player's own clock has expired (they lose on time)
+    const now = Date.now();
+    const lastMoveTime = new Date(game.last_move_at || game.created_at).getTime();
+    const elapsedMs = now - lastMoveTime;
+    const currentClockMs = game.turn === "white" ? game.white_clock_ms : game.black_clock_ms;
+    const remainingMs = (currentClockMs ?? 0) - elapsedMs;
+
+    if (remainingMs <= 0) {
+      // Player's clock expired — they lose on time
+      const admin = createAdminClient();
+      const winner = game.turn === "white" ? "black" : "white";
+      await admin.from("games").update({
+        status: "timeout",
+        winner: winner,
+        ended_at: new Date().toISOString(),
+        [`${game.turn}_clock_ms`]: 0,
+      }).eq("id", gameId);
+      return NextResponse.json({ error: "Your clock has expired", gameEnded: true, status: "timeout", winner }, { status: 400 });
+    }
+
+    //     // Validate and apply the move
     const result = validateAndApplyMove(
       game.fen || "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
       move,

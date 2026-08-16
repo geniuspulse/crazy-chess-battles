@@ -24,12 +24,21 @@ function formatClock(ms: number | null): string {
 }
 
 export default function GameClient({ gameId, initialGame, currentUserId }: GameClientProps) {
-  const { game, connected, error, makeMove, resign } = useRealtimeGame(gameId, initialGame);
+  const { game, connected, error, drawOffer, makeMove, resign, checkTimeout } = useRealtimeGame(gameId, initialGame);
   const [chess] = useState(() => new Chess(game.fen));
   const [fen, setFen] = useState(game.fen);
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [drawOffered, setDrawOffered] = useState(false);
   const [opponentDrawOffer, setOpponentDrawOffer] = useState(false);
+
+  // Listen for draw offer broadcasts from the hook
+  useEffect(() => {
+    if (drawOffer === "offer") {
+      setOpponentDrawOffer(true);
+    } else if (drawOffer === null) {
+      setOpponentDrawOffer(false);
+    }
+  }, [drawOffer]);
   const lastFenRef = useRef(game.fen);
 
   const isWhite = game.white_player_id === currentUserId;
