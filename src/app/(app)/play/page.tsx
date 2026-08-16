@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Swords, Clock, Zap, X, Link2, Copy, Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -22,6 +22,8 @@ export default function PlayPage() {
   const [creatingChallenge, setCreatingChallenge] = useState(false);
   const [copied, setCopied] = useState(false);
   const [matchError, setMatchError] = useState<string | null>(null);
+  const matchChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const matchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
   const supabase = createClient();
 
@@ -72,10 +74,14 @@ export default function PlayPage() {
             }
           )
           .subscribe();
+        matchChannelRef.current = channel;
 
         // Timeout after 60s
-        setTimeout(() => {
-          supabase.removeChannel(channel);
+        matchTimeoutRef.current = setTimeout(() => {
+          if (matchChannelRef.current) {
+            supabase.removeChannel(matchChannelRef.current);
+            matchChannelRef.current = null;
+          }
           setSearching(false);
           setMatchError("No opponent found. Try again!");
         }, 60000);
@@ -94,6 +100,14 @@ export default function PlayPage() {
   };
 
   const handleCancel = async () => {
+    if (matchChannelRef.current) {
+      supabase.removeChannel(matchChannelRef.current);
+      matchChannelRef.current = null;
+    }
+    if (matchTimeoutRef.current) {
+      clearTimeout(matchTimeoutRef.current);
+      matchTimeoutRef.current = null;
+    }
     try {
       await fetch("/api/matchmaking/leave", {
         method: "POST",
@@ -104,6 +118,18 @@ export default function PlayPage() {
     }
     setSearching(false);
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (matchChannelRef.current) {
+        supabase.removeChannel(matchChannelRef.current);
+      }
+      if (matchTimeoutRef.current) {
+        clearTimeout(matchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleCreateChallenge = async () => {
     setCreatingChallenge(true);

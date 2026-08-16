@@ -21,7 +21,7 @@ export async function POST(
     // Verify tournament exists and is upcoming
     const { data: tournament, error: tErr } = await supabase
       .from("tournaments")
-      .select("id, status, max_players")
+      .select("id, status, max_players, min_rating, max_rating")
       .eq("id", tournamentId)
       .single();
 
@@ -45,6 +45,22 @@ export async function POST(
 
       if (count !== null && count >= tournament.max_players) {
         return NextResponse.json({ error: "Tournament is full" }, { status: 400 });
+      }
+    }
+
+    // Enforce rating restrictions
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("rating")
+      .eq("id", user.id)
+      .single();
+
+    if (profile) {
+      if (tournament.min_rating && profile.rating < tournament.min_rating) {
+        return NextResponse.json({ error: `Minimum rating of ${tournament.min_rating} required` }, { status: 400 });
+      }
+      if (tournament.max_rating && profile.rating > tournament.max_rating) {
+        return NextResponse.json({ error: `Maximum rating of ${tournament.max_rating} required` }, { status: 400 });
       }
     }
 

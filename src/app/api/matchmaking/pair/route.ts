@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 // This endpoint is called by Vercel Cron every 10 seconds
 // It pairs players waiting in the matchmaking queue
@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
 
     // Clean up old entries (60s timeout)
     await supabase.rpc("cleanup_matchmaking");

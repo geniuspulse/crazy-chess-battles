@@ -1,6 +1,7 @@
 import { processTournamentGameResult } from "@/lib/tournament/results";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,21 +37,26 @@ export async function POST(req: NextRequest) {
 
     // Resign — opponent wins
     const winner = isWhite ? "black" : "white";
+    const admin = createAdminClient();
 
-    await supabase.from("games").update({
+    const { error: updateError } = await admin.from("games").update({
       status: "resign",
       winner,
       ended_at: new Date().toISOString(),
     }).eq("id", gameId);
 
+    if (updateError) {
+      return NextResponse.json({ error: "Failed to update game" }, { status: 500 });
+    }
+
     // Update ratings (same logic as move API)
-    const { data: whiteProfile } = await supabase
+    const { data: whiteProfile } = await admin
       .from("profiles")
       .select("rating, games_played, wins, losses, draws")
       .eq("id", game.white_player_id)
       .single();
 
-    const { data: blackProfile } = await supabase
+    const { data: blackProfile } = await admin
       .from("profiles")
       .select("rating, games_played, wins, losses, draws")
       .eq("id", game.black_player_id)
@@ -66,28 +72,28 @@ export async function POST(req: NextRequest) {
       const whiteNewRating = Math.round(whiteProfile.rating + K * (whiteScore - whiteExpected));
       const blackNewRating = Math.round(blackProfile.rating + K * (blackScore - blackExpected));
 
-      await supabase.from("profiles").update({
+      await admin.from("profiles").update({
         rating: whiteNewRating,
         games_played: (whiteProfile.games_played || 0) + 1,
         wins: (whiteProfile.wins || 0) + (winner === "white" ? 1 : 0),
         losses: (whiteProfile.losses || 0) + (winner === "black" ? 1 : 0),
       }).eq("id", game.white_player_id);
 
-      await supabase.from("profiles").update({
+      await admin.from("profiles").update({
         rating: blackNewRating,
         games_played: (blackProfile.games_played || 0) + 1,
         wins: (blackProfile.wins || 0) + (winner === "black" ? 1 : 0),
         losses: (blackProfile.losses || 0) + (winner === "white" ? 1 : 0),
       }).eq("id", game.black_player_id);
 
-      await supabase.from("games").update({
+      await admin.from("games").update({
         white_rating_change: whiteNewRating - whiteProfile.rating,
         black_rating_change: blackNewRating - blackProfile.rating,
       }).eq("id", gameId);
     }
 
     // Process tournament game result if this is a tournament game
-    const { data: fullGame } = await supabase
+    const { data: fullGame } = await admin
       .from("games")
       .select("tournament_id")
       .eq("id", gameId)

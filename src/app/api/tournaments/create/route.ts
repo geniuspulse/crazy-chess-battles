@@ -53,6 +53,11 @@ export async function POST(req: NextRequest) {
 
     // Ensure type matches allowed DB constraint ('arena' or 'swiss')
     const dbType = ["arena", "swiss"].includes(type) ? type : "swiss";
+    const GAME_TIME_CONTROL_MAP: Record<string, string> = {
+      bullet: "bullet", blitz3: "blitz", blitz: "blitz",
+      rapid: "rapid", rapid15: "rapid", classical: "classical",
+    };
+    const dbTimeControl = GAME_TIME_CONTROL_MAP[timeControl] || "blitz";
 
     const { data: tournament, error } = await supabase
       .from("tournaments")
@@ -60,7 +65,7 @@ export async function POST(req: NextRequest) {
         name,
         description: description || null,
         type: dbType,
-        time_control: timeControl,
+        time_control: dbTimeControl,
         initial_minutes: Number(initialMinutes),
         increment_seconds: Number(incrementSeconds || 0),
         max_players: maxPlayers ? Number(maxPlayers) : null,

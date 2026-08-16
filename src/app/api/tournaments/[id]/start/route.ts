@@ -147,15 +147,28 @@ export async function POST(
         continue;
       }
 
+      const whiteRating = ratingMap.get(pairing.white) || 1200;
+      const blackRating = ratingMap.get(pairing.black) || 1200;
+      const initialMs = tournament.initial_minutes * 60 * 1000;
+
       await admin.from("games").insert({
         white_player_id: pairing.white,
         black_player_id: pairing.black,
+        white_rating: whiteRating,
+        black_rating: blackRating,
         status: "playing",
         time_control: tournament.time_control,
         initial_minutes: tournament.initial_minutes,
         increment_seconds: tournament.increment_seconds,
+        rated: false,
         tournament_id: tournamentId,
         tournament_round: 1,
+        fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        turn: "white",
+        move_count: 0,
+        white_clock_ms: initialMs,
+        black_clock_ms: initialMs,
+        last_move_at: new Date().toISOString(),
       });
     }
 

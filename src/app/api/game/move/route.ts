@@ -2,6 +2,7 @@ import { processTournamentGameResult } from "@/lib/tournament/results";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { validateAndApplyMove } from "@/lib/game/chess-engine";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(req: NextRequest) {
   try {
@@ -80,7 +81,8 @@ export async function POST(req: NextRequest) {
       updateData.ended_at = new Date().toISOString();
     }
 
-    const { error } = await supabase
+    const admin = createAdminClient();
+    const { error } = await admin
       .from("games")
       .update(updateData)
       .eq("id", gameId);
@@ -89,8 +91,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // If game ended, update ratings
-    if (gameEnded && result.winner) {
+    // If game ended, update ratings (including draws where winner is null)
+    if (gameEnded) {
       const { data: whiteProfile } = await supabase
         .from("profiles")
         .select("rating, rating_deviation, rating_volatility, games_played, wins, losses, draws")
@@ -108,13 +110,13 @@ export async function POST(req: NextRequest) {
         const K = 32;
         const whiteExpected = 1 / (1 + Math.pow(10, (blackProfile.rating - whiteProfile.rating) / 400));
         const blackExpected = 1 - whiteExpected;
-        const whiteScore = result.winner === "white" ? 1 : result.winner === "black" ? 0 : 0.5;
+        const whiteScore = result.winner === "white" ? 1 : result.winner === "black" ? 0 : 0.5; // null = draw = 0.5
         const blackScore = 1 - whiteScore;
 
         const whiteNewRating = Math.round(whiteProfile.rating + K * (whiteScore - whiteExpected));
         const blackNewRating = Math.round(blackProfile.rating + K * (blackScore - blackExpected));
 
-        await supabase.from("profiles").update({
+        await admin.from("profiles").update({
           rating: whiteNewRating,
           games_played: (whiteProfile.games_played || 0) + 1,
           wins: (whiteProfile.wins || 0) + (result.winner === "white" ? 1 : 0),
@@ -122,7 +124,7 @@ export async function POST(req: NextRequest) {
           draws: (whiteProfile.draws || 0) + (result.status === "draw" ? 1 : 0),
         }).eq("id", game.white_player_id);
 
-        await supabase.from("profiles").update({
+        await admin.from("profiles").update({
           rating: blackNewRating,
           games_played: (blackProfile.games_played || 0) + 1,
           wins: (blackProfile.wins || 0) + (result.winner === "black" ? 1 : 0),
@@ -131,7 +133,7 @@ export async function POST(req: NextRequest) {
         }).eq("id", game.black_player_id);
 
         // Store rating changes on game record
-        await supabase.from("games").update({
+        await admin.from("games").update({
           white_rating_change: whiteNewRating - whiteProfile.rating,
           black_rating_change: blackNewRating - blackProfile.rating,
         }).eq("id", gameId);

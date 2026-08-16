@@ -17,13 +17,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Charge ID required" }, { status: 400 });
     }
 
-    // Fetch deposit record
+    // Fetch deposit record (try charge_id first, then tx_ref for card deposits)
     const admin = createAdminClient();
-    const { data: deposit } = await admin
+    let { data: deposit } = await admin
       .from("deposits")
       .select("id, user_id, amount_cents, status, method")
       .eq("charge_id", chargeId)
       .single();
+
+    if (!deposit) {
+      const { data: txDeposit } = await admin
+        .from("deposits")
+        .select("id, user_id, amount_cents, status, method")
+        .eq("tx_ref", chargeId)
+        .single();
+      deposit = txDeposit;
+    }
 
     if (!deposit) {
       return NextResponse.json({ error: "Deposit not found" }, { status: 404 });
@@ -56,13 +65,11 @@ export async function POST(req: NextRequest) {
     const data = await res.json();
 
     if (data.status === "success" || data.data?.status === "success") {
-      // Credit wallet
-      await admin
-        .from("profiles")
-        .update({
-          wallet_balance_cents: (await admin.from("profiles").select("wallet_balance_cents").eq("id", user.id).single()).data?.wallet_balance_cents + deposit.amount_cents,
-        })
-        .eq("id", user.id);
+      // Credit wallet atomically
+      await admin.rpc("credit_wallet", {
+        p_user_id: user.id,
+        p_amount_cents: deposit.amount_cents,
+      });
 
       // Update deposit
       await admin

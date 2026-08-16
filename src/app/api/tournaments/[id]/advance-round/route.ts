@@ -43,7 +43,7 @@ export async function POST(
 
     const nextRound = (tournament.current_round || 1) + 1;
 
-    if (nextRound > tournament.rounds) {
+    if (tournament.rounds && nextRound > tournament.rounds) {
       // All rounds done — finish tournament
       await admin
         .from("tournaments")
@@ -51,6 +51,10 @@ export async function POST(
         .eq("id", tournamentId);
 
       return NextResponse.json({ success: true, finished: true });
+    }
+
+    if (!tournament.rounds) {
+      return NextResponse.json({ error: "Arena tournaments don't use round advancement" }, { status: 400 });
     }
 
     // Check if current round is complete
@@ -68,7 +72,7 @@ export async function POST(
     // Fetch participants sorted by score (then by seed for tiebreak)
     const { data: participants } = await admin
       .from("tournament_participants")
-      .select("player_id, score, seed")
+      .select("player_id, score, seed, wins, losses, draws, games_played")
       .eq("tournament_id", tournamentId)
       .order("score", { ascending: false })
       .order("seed", { ascending: true });
@@ -76,6 +80,13 @@ export async function POST(
     if (!participants || participants.length === 0) {
       return NextResponse.json({ error: "No participants" }, { status: 400 });
     }
+
+    // Fetch ratings for game creation
+    const playerIds = participants.map((p) => p.player_id);
+    const { data: profiles } = await admin
+      .from("profiles")
+      .select("id, rating")
+      .in("id", playerIds);
 
     // Swiss pairing for next round:
     // Group by score, pair within score groups, avoid rematches
@@ -125,27 +136,41 @@ export async function POST(
     // Create games for real pairings, award byes
     for (const pairing of pairings) {
       if (pairing.bye) {
+        const byeParticipant = participants.find((p) => p.player_id === pairing.bye);
         await admin
           .from("tournament_participants")
           .update({
-            score: (participants.find((p) => p.player_id === pairing.bye)?.score || 0) + 1,
-            wins: 1,
-            games_played: 1,
+            score: (byeParticipant?.score || 0) + 1,
+            wins: (byeParticipant?.wins || 0) + 1,
+            games_played: (byeParticipant?.games_played || 0) + 1,
           })
           .eq("player_id", pairing.bye)
           .eq("tournament_id", tournamentId);
         continue;
       }
 
+      const whiteRating = profiles?.find((p: any) => p.id === pairing.white)?.rating || 1200;
+      const blackRating = profiles?.find((p: any) => p.id === pairing.black)?.rating || 1200;
+      const initialMs = tournament.initial_minutes * 60 * 1000;
+
       await admin.from("games").insert({
         white_player_id: pairing.white,
         black_player_id: pairing.black,
+        white_rating: whiteRating,
+        black_rating: blackRating,
         status: "playing",
         time_control: tournament.time_control,
         initial_minutes: tournament.initial_minutes,
         increment_seconds: tournament.increment_seconds,
+        rated: false,
         tournament_id: tournamentId,
         tournament_round: nextRound,
+        fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        turn: "white",
+        move_count: 0,
+        white_clock_ms: initialMs,
+        black_clock_ms: initialMs,
+        last_move_at: new Date().toISOString(),
       });
     }
 

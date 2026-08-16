@@ -362,7 +362,7 @@ export default async function TournamentDetailPage({
                         {pairing.result === "white" ? "1-0" : pairing.result === "black" ? "0-1" : "½-½"}
                       </span>
                     ) : game ? (
-                      <Link href={`/play?game=${game.id}`} className="text-xs px-2 py-1 rounded bg-ccb-primary/10 text-ccb-primary hover:bg-ccb-primary/20 transition-colors">
+                      <Link href={`/game/${game.id}`} className="text-xs px-2 py-1 rounded bg-ccb-primary/10 text-ccb-primary hover:bg-ccb-primary/20 transition-colors">
                         Watch →
                       </Link>
                     ) : (

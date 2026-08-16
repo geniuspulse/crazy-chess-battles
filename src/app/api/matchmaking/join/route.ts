@@ -1,5 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+// Map extended time controls to base categories for games.time_control CHECK constraint
+const GAME_TIME_CONTROL_MAP: Record<string, string> = {
+  bullet: "bullet",
+  blitz3: "blitz",
+  blitz: "blitz",
+  rapid: "rapid",
+  rapid15: "rapid",
+  classical: "classical",
+};
 
 export async function POST(req: NextRequest) {
   try {
@@ -84,7 +95,7 @@ export async function POST(req: NextRequest) {
         p_black_id: opponent.player_id,
         p_white_rating: myRating,
         p_black_rating: opponent.rating,
-        p_time_control: timeControl,
+        p_time_control: GAME_TIME_CONTROL_MAP[timeControl] || "blitz",
         p_initial_minutes: tc.minutes,
         p_increment_seconds: tc.increment,
         p_rated: rated ?? true,
@@ -94,9 +105,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ status: "searching" });
       }
 
-      // Remove both players from queue
+      // Remove both players from queue (use admin client to delete opponent's entry — RLS only allows deleting own)
+      const admin = createAdminClient();
       await supabase.from("matchmaking_queue").delete().eq("player_id", user.id);
-      await supabase.from("matchmaking_queue").delete().eq("id", opponent.id);
+      await admin.from("matchmaking_queue").delete().eq("id", opponent.id);
 
       return NextResponse.json({
         status: "matched",

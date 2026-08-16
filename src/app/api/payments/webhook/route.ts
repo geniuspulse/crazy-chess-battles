@@ -5,8 +5,12 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // Verify this is a legitimate Paychangu webhook
-    // In production, you should verify the signature or secret hash
+    // Verify webhook authenticity via shared secret
+    const webhookSecret = req.headers.get("x-paychangu-secret");
+    if (process.env.PAYCHANGU_WEBHOOK_SECRET && webhookSecret !== process.env.PAYCHANGU_WEBHOOK_SECRET) {
+      return NextResponse.json({ error: "Invalid webhook signature" }, { status: 401 });
+    }
+
     const eventType = body.event_type;
     const status = body.status;
     const chargeId = body.charge_id;
@@ -34,19 +38,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (status === "success") {
-      // Credit wallet
-      const { data: profile } = await admin
-        .from("profiles")
-        .select("wallet_balance_cents")
-        .eq("id", deposit.user_id)
-        .single();
-
-      const newBalance = (profile?.wallet_balance_cents || 0) + deposit.amount_cents;
-
-      await admin
-        .from("profiles")
-        .update({ wallet_balance_cents: newBalance })
-        .eq("id", deposit.user_id);
+      // Credit wallet atomically (RPC avoids read-then-write race)
+      await admin.rpc("credit_wallet", {
+        p_user_id: deposit.user_id,
+        p_amount_cents: deposit.amount_cents,
+      });
 
       await admin
         .from("deposits")
