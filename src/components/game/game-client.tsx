@@ -135,6 +135,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         <div className="w-full max-w-[600px] aspect-square mx-auto">
           <Chessboard options={{
             position: fen,
+            boardOrientation: "white",
             onPieceDrop: () => false,
             allowDragging: false,
             darkSquareStyle: { backgroundColor: "#312e81" },
@@ -226,8 +227,8 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
       <div className="w-full max-w-[600px] aspect-square mx-auto">
         <Chessboard options={{
           position: fen,
-          onPieceDrop: ({ sourceSquare, targetSquare }) => {
-            if (!targetSquare) return false;
+          boardOrientation: isWhite ? "white" : "black",
+          onPieceDrop: (sourceSquare: string, targetSquare: string) => {
             return onDrop(sourceSquare, targetSquare);
           },
           allowDragging: myTurn && !gameEnded,
