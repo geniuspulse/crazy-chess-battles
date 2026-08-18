@@ -228,7 +228,8 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         <Chessboard options={{
           position: fen,
           boardOrientation: isWhite ? "white" : "black",
-          onPieceDrop: (sourceSquare: string, targetSquare: string) => {
+          onPieceDrop: ({ sourceSquare, targetSquare }: { piece: string; sourceSquare: string; targetSquare: string }) => {
+            if (!targetSquare) return false;
             return onDrop(sourceSquare, targetSquare);
           },
           allowDragging: myTurn && !gameEnded,
