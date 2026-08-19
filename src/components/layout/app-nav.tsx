@@ -130,7 +130,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
       {/* Mobile bottom nav — 5 links, tight, active tab indicator */}
       {!isGameRoute && (
       <nav 
-        className="fixed bottom-0 left-0 right-0 z-[100] border-t border-ccb-border bg-ccb-surface/95 backdrop-blur-md sm:hidden"
+        className="fixed bottom-0 left-0 right-0 z-[100] border-t border-gray-200 bg-white sm:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       >
         <div className="flex items-stretch justify-around h-14">
@@ -147,8 +147,8 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
                 {isActive && (
                   <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-ccb-primary" />
                 )}
-                <Icon className={`w-5 h-5 transition-colors ${isActive ? "text-ccb-primary" : "text-ccb-muted"}`} />
-                <span className={`text-[10px] font-medium transition-colors ${isActive ? "text-ccb-primary" : "text-ccb-muted"}`}>
+                <Icon className={`w-5 h-5 transition-colors ${isActive ? "text-ccb-primary" : "text-gray-400"}`} />
+                <span className={`text-[10px] font-medium transition-colors ${isActive ? "text-ccb-primary" : "text-gray-500"}`}>
                   {item.label}
                 </span>
               </Link>
