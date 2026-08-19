@@ -5,18 +5,50 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
+type ChessLevel = "beginner" | "intermediate" | "expert";
+
+const LEVEL_CONFIG: Record<ChessLevel, { label: string; rating: number; blurb: string; icon: string; accent: string }> = {
+  beginner: {
+    label: "Beginner",
+    rating: 400,
+    blurb: "New to chess or still learning the basics",
+    icon: "♟",
+    accent: "border-ccb-bronze bg-ccb-bronze/10",
+  },
+  intermediate: {
+    label: "Intermediate",
+    rating: 1500,
+    blurb: "Comfortable with tactics and openings",
+    icon: "♞",
+    accent: "border-ccb-accent bg-ccb-accent/10",
+  },
+  expert: {
+    label: "Expert",
+    rating: 2500,
+    blurb: "Experienced competitive player",
+    icon: "♛",
+    accent: "border-purple-500 bg-purple-500/10",
+  },
+};
+
 export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
+  const [chessLevel, setChessLevel] = useState<ChessLevel | null>(null);
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createClient();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!chessLevel) {
+      setError("Please select your chess level");
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -24,7 +56,11 @@ export default function SignupPage() {
       email,
       password,
       options: {
-        data: { username, display_name: username },
+        data: {
+          username,
+          display_name: username,
+          chess_level: chessLevel,
+        },
       },
     });
 
@@ -38,7 +74,7 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
+    <div className="min-h-screen flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2">
@@ -56,7 +92,7 @@ export default function SignupPage() {
           </div>
         )}
 
-        <form onSubmit={handleSignup} className="card space-y-4">
+        <form onSubmit={handleSignup} className="card space-y-5">
           <div>
             <label htmlFor="username" className="text-sm font-medium block mb-1.5">Username</label>
             <input
@@ -93,7 +129,46 @@ export default function SignupPage() {
               minLength={8}
             />
           </div>
-          <button type="submit" disabled={loading} className="btn-primary w-full">
+
+          {/* Chess Level Selector */}
+          <div>
+            <label className="text-sm font-medium block mb-2">Your Chess Level</label>
+            <p className="text-xs text-ccb-muted mb-3">This sets your starting rating. You'll climb or fall from here, just like chess.com.</p>
+            <div className="grid grid-cols-3 gap-2">
+              {(Object.keys(LEVEL_CONFIG) as ChessLevel[]).map((level) => {
+                const config = LEVEL_CONFIG[level];
+                const selected = chessLevel === level;
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => setChessLevel(level)}
+                    className={`relative rounded-xl border-2 p-3 text-center transition-all ${
+                      selected
+                        ? `${config.accent} scale-[1.03]`
+                        : "border-ccb-border bg-ccb-surface hover:border-ccb-muted"
+                    }`}
+                  >
+                    <div className="text-2xl mb-1">{config.icon}</div>
+                    <div className="text-xs font-bold">{config.label}</div>
+                    <div className="text-[10px] text-ccb-muted mt-0.5">{config.rating} ELO</div>
+                    {selected && (
+                      <div className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-ccb-primary flex items-center justify-center">
+                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {chessLevel && (
+              <p className="text-xs text-ccb-muted mt-2 text-center">{LEVEL_CONFIG[chessLevel].blurb}</p>
+            )}
+          </div>
+
+          <button type="submit" disabled={loading || !chessLevel} className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed">
             {loading ? "Creating account..." : "Sign up"}
           </button>
         </form>

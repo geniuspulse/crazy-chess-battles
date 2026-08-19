@@ -13,12 +13,14 @@ export default async function LeaderboardPage() {
     .limit(50);
 
   const getTier = (rating: number) => {
-    if (rating >= 2200) return { label: "Master", color: "text-purple-400", bg: "bg-purple-400/10" };
+    if (rating >= 2400) return { label: "Grandmaster", color: "text-purple-400", bg: "bg-purple-400/10" };
+    if (rating >= 2200) return { label: "Master", color: "text-fuchsia-400", bg: "bg-fuchsia-400/10" };
     if (rating >= 1900) return { label: "Diamond", color: "text-cyan-400", bg: "bg-cyan-400/10" };
     if (rating >= 1600) return { label: "Platinum", color: "text-emerald-400", bg: "bg-emerald-400/10" };
     if (rating >= 1300) return { label: "Gold", color: "text-ccb-accent", bg: "bg-ccb-accent/10" };
     if (rating >= 1000) return { label: "Silver", color: "text-ccb-silver", bg: "bg-ccb-silver/10" };
-    return { label: "Bronze", color: "text-ccb-bronze", bg: "bg-ccb-bronze/10" };
+    if (rating >= 700) return { label: "Bronze", color: "text-ccb-bronze", bg: "bg-ccb-bronze/10" };
+    return { label: "Rookie", color: "text-ccb-muted", bg: "bg-ccb-muted/10" };
   };
 
   return (

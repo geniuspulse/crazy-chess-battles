@@ -1,6 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import Link from "next/link";
 import { Swords, Trophy, TrendingUp, Wallet, Zap, Share2, ChevronRight } from "lucide-react";
+
+const LEVEL_RATINGS: Record<string, number> = {
+  beginner: 400,
+  intermediate: 1500,
+  expert: 2500,
+};
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -11,6 +18,16 @@ export default async function DashboardPage() {
     .select("*")
     .eq("id", user!.id)
     .single();
+
+  // Initialize rating based on chess level selected during signup
+  const chessLevel = user?.user_metadata?.chess_level as string | undefined;
+  if (chessLevel && LEVEL_RATINGS[chessLevel] && profile && profile.games_played === 0 && profile.rating !== LEVEL_RATINGS[chessLevel]) {
+    const admin = createAdminClient();
+    await admin.from("profiles")
+      .update({ rating: LEVEL_RATINGS[chessLevel] })
+      .eq("id", user!.id);
+    profile.rating = LEVEL_RATINGS[chessLevel];
+  }
 
   const { data: recentGames } = await supabase
     .from("games")
