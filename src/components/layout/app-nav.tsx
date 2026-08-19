@@ -50,7 +50,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
   return (
     <>
       {/* Desktop nav — full nav bar, hidden on mobile */}
-      <nav className="hidden sm:block border-b border-ccb-border bg-ccb-surface/50 backdrop-blur-sm sticky top-0 z-50">
+      <nav className="hidden sm:block border-b border-ccb-border bg-ccb-surface sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between h-16">
           <div className="flex items-center gap-8">
             <Link href="/dashboard" className="flex items-center gap-2">
@@ -101,7 +101,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
 
       {/* Mobile header — compact */}
       {!isGameRoute && (
-      <header className="sm:hidden sticky top-0 z-50 border-b border-ccb-border bg-ccb-dark/90 backdrop-blur-md">
+      <header className="sm:hidden sticky top-0 z-50 border-b border-ccb-border bg-ccb-dark">
         <div className="flex items-center justify-between px-4 h-12">
           <Link href="/dashboard" className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-ccb-primary flex items-center justify-center">

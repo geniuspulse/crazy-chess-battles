@@ -20,8 +20,8 @@ const config: Config = {
           bronze: "#b45309",
           success: "#10b981",
           danger: "#ef4444",
-          muted: "#6b7280",
-          text: "#e2e8f0",
+          muted: "#9ca3af",
+          text: "#ffffff",
         },
       },
       fontFamily: {

@@ -6,7 +6,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Nav */}
-      <nav className="border-b border-ccb-border bg-ccb-surface/50 backdrop-blur-sm sticky top-0 z-50">
+      <nav className="border-b border-ccb-border bg-ccb-surface sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between h-14 sm:h-16">
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-ccb-primary flex items-center justify-center shrink-0">
