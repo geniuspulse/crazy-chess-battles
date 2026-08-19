@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   LayoutDashboard, Users, ArrowDownUp, Trophy, Loader2, Check, X, Coins,
-  TrendingUp, Wallet, AlertCircle, ChevronRight, Cherry
+  TrendingUp, Wallet, AlertCircle, ChevronRight, Cherry, Gift
 } from "lucide-react";
 
 interface Withdrawal {
