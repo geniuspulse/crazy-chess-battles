@@ -368,18 +368,28 @@ export default function CreateTournamentPage() {
             </div>
           </div>
 
-          {/* Prize Distribution Preview */}
+          {/* Prize Distribution Preview — depends on tournament format */}
           {parseFloat(prizePoolMwk) > 0 && (
             <div className="p-3 rounded-lg bg-ccb-surface/50 border border-ccb-surface space-y-2">
-              <p className="text-xs font-medium text-ccb-muted">Prize Distribution (Top 5)</p>
-              <div className="grid grid-cols-5 gap-2 text-center">
-                {[
-                  { rank: "1st", pct: 40 },
-                  { rank: "2nd", pct: 20 },
-                  { rank: "3rd", pct: 18 },
-                  { rank: "4th", pct: 12 },
-                  { rank: "5th", pct: 10 },
-                ].map((tier) => {
+              <p className="text-xs font-medium text-ccb-muted">
+                Prize Distribution ({type === "knockout" ? "Top 4" : "Top 5"})
+              </p>
+              <div className={`grid gap-2 text-center ${type === "knockout" ? "grid-cols-4" : "grid-cols-5"}`}>
+                {(type === "knockout"
+                  ? [
+                      { rank: "1st", pct: 50 },
+                      { rank: "2nd", pct: 25 },
+                      { rank: "3rd", pct: 15 },
+                      { rank: "4th", pct: 10 },
+                    ]
+                  : [
+                      { rank: "1st", pct: 40 },
+                      { rank: "2nd", pct: 20 },
+                      { rank: "3rd", pct: 18 },
+                      { rank: "4th", pct: 12 },
+                      { rank: "5th", pct: 10 },
+                    ]
+                ).map((tier) => {
                   const amount = Math.floor((parseFloat(prizePoolMwk) || 0) * (tier.pct / 100));
                   return (
                     <div key={tier.rank} className="space-y-0.5">

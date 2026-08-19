@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { PRIZE_SPLITS_BY_TYPE, DEFAULT_PRIZE_SPLITS } from "@/lib/tournament/prizes";
 
 export async function POST(req: NextRequest) {
   try {
@@ -51,13 +52,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Ensure type matches allowed DB constraint ('arena' or 'swiss')
-    const dbType = ["arena", "swiss"].includes(type) ? type : "swiss";
+    // Tournament format — arena, swiss, and knockout are all valid DB values
+    const dbType = ["arena", "swiss", "knockout"].includes(type) ? type : "swiss";
     const GAME_TIME_CONTROL_MAP: Record<string, string> = {
       bullet: "bullet", blitz3: "blitz", blitz: "blitz",
       rapid: "rapid", rapid15: "rapid", classical: "classical",
     };
     const dbTimeControl = GAME_TIME_CONTROL_MAP[timeControl] || "blitz";
+
+    // Prize split depends on format — knockout rewards top 4, swiss/arena reward top 5
+    const payouts = PRIZE_SPLITS_BY_TYPE[dbType] || DEFAULT_PRIZE_SPLITS;
 
     const { data: tournament, error } = await supabase
       .from("tournaments")
@@ -75,13 +79,7 @@ export async function POST(req: NextRequest) {
         ends_at: endsAt || null,
         entry_fee_cents: Number(entryFeeCents || 0),
         prize_pool_cents: Number(prizePoolCents || 0),
-        prize_distribution: { type: "percentage", payouts: [
-          { rank: 1, percentage: 40 },
-          { rank: 2, percentage: 20 },
-          { rank: 3, percentage: 18 },
-          { rank: 4, percentage: 12 },
-          { rank: 5, percentage: 10 },
-        ] },
+        prize_distribution: { type: "percentage", payouts },
         min_rating: Number(minRating || 0),
         max_rating: maxRating ? Number(maxRating) : null,
         created_by: user.id,

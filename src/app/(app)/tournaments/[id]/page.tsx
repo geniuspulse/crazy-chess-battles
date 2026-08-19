@@ -67,6 +67,7 @@ export default async function TournamentDetailPage({
       ends_at,
       entry_fee_cents,
       prize_pool_cents,
+      prize_distribution,
       created_by
     `
     )
@@ -295,7 +296,8 @@ export default async function TournamentDetailPage({
         </div>
       </div>
 
-      {/* Prize Distribution Breakdown */}
+      {/* Prize Distribution Breakdown — reflects the actual stored payout config, which
+          varies by tournament format (e.g. knockout rewards top 4, swiss/arena reward top 5) */}
       {tournament.prize_pool_cents && tournament.prize_pool_cents > 0 && (
         <div className="card space-y-4">
           <h2 className="text-lg font-bold flex items-center gap-2">
@@ -303,29 +305,47 @@ export default async function TournamentDetailPage({
             Prize Distribution
           </h2>
           <div className="space-y-3">
-            {[
-              { rank: 1, pct: 40, label: "1st Place", color: "text-ccb-accent" },
-              { rank: 2, pct: 20, label: "2nd Place", color: "text-ccb-silver" },
-              { rank: 3, pct: 18, label: "3rd Place", color: "text-ccb-bronze" },
-              { rank: 4, pct: 12, label: "4th Place", color: "text-ccb-muted" },
-              { rank: 5, pct: 10, label: "5th Place", color: "text-ccb-muted" },
-            ].map((tier) => {
-              const amount = Math.floor(tournament.prize_pool_cents * (tier.pct / 100));
-              return (
-                <div key={tier.rank} className="flex items-center justify-between p-3 rounded-lg bg-ccb-surface/50">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full bg-ccb-surface flex items-center justify-center text-sm font-bold ${tier.color}`}>
-                      {tier.rank}
+            {(() => {
+              const RANK_LABELS: Record<number, { label: string; color: string }> = {
+                1: { label: "1st Place", color: "text-ccb-accent" },
+                2: { label: "2nd Place", color: "text-ccb-silver" },
+                3: { label: "3rd Place", color: "text-ccb-bronze" },
+                4: { label: "4th Place", color: "text-ccb-muted" },
+                5: { label: "5th Place", color: "text-ccb-muted" },
+              };
+              const fallback = [
+                { rank: 1, percentage: 40 },
+                { rank: 2, percentage: 20 },
+                { rank: 3, percentage: 18 },
+                { rank: 4, percentage: 12 },
+                { rank: 5, percentage: 10 },
+              ];
+              const tiers: Array<{ rank: number; percentage: number }> =
+                tournament.prize_distribution?.payouts?.length > 0
+                  ? tournament.prize_distribution.payouts
+                  : fallback;
+
+              return tiers
+                .sort((a, b) => a.rank - b.rank)
+                .map((tier) => {
+                  const amount = Math.floor(tournament.prize_pool_cents * (tier.percentage / 100));
+                  const meta = RANK_LABELS[tier.rank] || { label: `${tier.rank}th Place`, color: "text-ccb-muted" };
+                  return (
+                    <div key={tier.rank} className="flex items-center justify-between p-3 rounded-lg bg-ccb-surface/50">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full bg-ccb-surface flex items-center justify-center text-sm font-bold ${meta.color}`}>
+                          {tier.rank}
+                        </div>
+                        <span className="text-sm font-medium">{meta.label}</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-ccb-accent">MWK {Math.floor(amount / 100).toLocaleString("en-US")}</div>
+                        <div className="text-xs text-ccb-muted">{tier.percentage}% of prize pool</div>
+                      </div>
                     </div>
-                    <span className="text-sm font-medium">{tier.label}</span>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold text-ccb-accent">MWK {Math.floor(amount / 100).toLocaleString("en-US")}</div>
-                    <div className="text-xs text-ccb-muted">{tier.pct}% of prize pool</div>
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                });
+            })()}
           </div>
           {tournament.status === "finished" && (
             <p className="text-xs text-ccb-muted pt-2 border-t border-ccb-surface">

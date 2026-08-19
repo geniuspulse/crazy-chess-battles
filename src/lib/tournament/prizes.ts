@@ -11,14 +11,35 @@ interface ParticipantResult {
   score: number;
 }
 
-// Default payout structure: top 5 players rewarded
-export const DEFAULT_PRIZE_SPLITS = [
-  { rank: 1, percentage: 40 },
-  { rank: 2, percentage: 20 },
-  { rank: 3, percentage: 18 },
-  { rank: 4, percentage: 12 },
-  { rank: 5, percentage: 10 },
-];
+// Default payout structure by tournament format.
+// Knockout tournaments have fewer total games, so only the top 4 who reach
+// the semis/final are rewarded. Swiss/arena run more rounds against a wider
+// field, so the top 5 share the pool.
+export const PRIZE_SPLITS_BY_TYPE: Record<string, Array<{ rank: number; percentage: number }>> = {
+  knockout: [
+    { rank: 1, percentage: 50 },
+    { rank: 2, percentage: 25 },
+    { rank: 3, percentage: 15 },
+    { rank: 4, percentage: 10 },
+  ],
+  swiss: [
+    { rank: 1, percentage: 40 },
+    { rank: 2, percentage: 20 },
+    { rank: 3, percentage: 18 },
+    { rank: 4, percentage: 12 },
+    { rank: 5, percentage: 10 },
+  ],
+  arena: [
+    { rank: 1, percentage: 40 },
+    { rank: 2, percentage: 20 },
+    { rank: 3, percentage: 18 },
+    { rank: 4, percentage: 12 },
+    { rank: 5, percentage: 10 },
+  ],
+};
+
+// Fallback used when a tournament's type doesn't match a known key
+export const DEFAULT_PRIZE_SPLITS = PRIZE_SPLITS_BY_TYPE.swiss;
 
 /**
  * Distribute prize pool to winners based on tournament's prize_distribution config.
@@ -56,7 +77,7 @@ export async function distributePrizes(
       }
     }
   } else {
-    // Default: top 5 split 40/20/18/12/10
+    // Default fallback: top 5 split 40/20/18/12/10
     for (const split of DEFAULT_PRIZE_SPLITS) {
       const winner = participants.find((p) => p.final_rank === split.rank);
       if (winner) {

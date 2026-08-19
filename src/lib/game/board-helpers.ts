@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { Chess } from "chess.js";
 
 const PIECE_SYMBOLS: Record<string, string> = {
@@ -69,14 +70,84 @@ export function getCheckSquare(fen: string): string | null {
     if (!game.inCheck()) return null;
     const turn = game.turn();
     const board = game.board();
-    for (let rank = 0; rank < 8; rank++) {
-      for (let file = 0; file < 8; file++) {
-        const piece = board[rank][file];
+    // chess.js board() returns rows top-to-bottom (row 0 = rank 8, row 7 = rank 1),
+    // so read the piece's own .square property rather than deriving it from the
+    // row index — deriving it manually inverted ranks and highlighted the wrong king.
+    for (const row of board) {
+      for (const piece of row) {
         if (piece && piece.type === "k" && piece.color === turn) {
-          return String.fromCharCode(97 + file) + (rank + 1);
+          return piece.square;
         }
       }
     }
   } catch {}
   return null;
+}
+
+interface SquareStyleInputs {
+  lastMove?: { from: string; to: string } | null;
+  checkSquare?: string | null;
+  legalMoveSquares?: string[];
+  selectedSquare?: string | null;
+  premove?: { from: string; to: string } | null;
+}
+
+/**
+ * Builds chessboard square highlight styles, chess.com-style: flat, subtle
+ * square-tint overlays for last-move/selected/premove (no large radial
+ * blobs), and small centered dots for legal-move hints so pieces stay
+ * clearly visible underneath.
+ */
+export function buildSquareStyles({
+  lastMove,
+  checkSquare,
+  legalMoveSquares = [],
+  selectedSquare,
+  premove,
+}: SquareStyleInputs): Record<string, CSSProperties> {
+  const styles: Record<string, CSSProperties> = {};
+
+  // Last move — flat, low-opacity square tint (no circle)
+  if (lastMove) {
+    styles[lastMove.from] = { backgroundColor: "rgba(139,92,246,0.22)" };
+    styles[lastMove.to] = { backgroundColor: "rgba(139,92,246,0.22)" };
+  }
+
+  // King in check — subtle red tint, small inner glow
+  if (checkSquare) {
+    styles[checkSquare] = {
+      backgroundColor: "rgba(239,68,68,0.35)",
+      boxShadow: "inset 0 0 8px rgba(239,68,68,0.4)",
+    };
+  }
+
+  // Legal move hints — small centered dot, doesn't obscure the square
+  for (const sq of legalMoveSquares) {
+    styles[sq] = {
+      backgroundImage: "radial-gradient(circle, rgba(0,0,0,0.28) 15%, transparent 16%)",
+      backgroundSize: "100% 100%",
+    };
+  }
+
+  // Selected square — flat tint, slightly stronger than last-move
+  if (selectedSquare) {
+    styles[selectedSquare] = {
+      ...styles[selectedSquare],
+      backgroundColor: "rgba(139,92,246,0.32)",
+    };
+  }
+
+  // Premove — thin amber border, no fill blob
+  if (premove) {
+    styles[premove.from] = {
+      ...styles[premove.from],
+      boxShadow: "inset 0 0 0 2px rgba(251,191,36,0.7)",
+    };
+    styles[premove.to] = {
+      ...styles[premove.to],
+      boxShadow: "inset 0 0 0 2px rgba(251,191,36,0.6)",
+    };
+  }
+
+  return styles;
 }

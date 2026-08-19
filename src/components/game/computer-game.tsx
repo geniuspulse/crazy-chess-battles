@@ -6,7 +6,7 @@ import { Chess } from "chess.js";
 import { Clock, Flag, ArrowLeft, Bot, Volume2, VolumeX, List, Smile, Palette, X } from "lucide-react";
 import Link from "next/link";
 import { getBestMove, type AIDifficulty } from "@/lib/game/chess-ai";
-import { getCapturedPieces, getCheckSquare } from "@/lib/game/board-helpers";
+import { getCapturedPieces, getCheckSquare, buildSquareStyles } from "@/lib/game/board-helpers";
 import { playSound, detectMoveSound, setSoundEnabled, isSoundEnabled } from "@/lib/game/sound";
 import { getStoredBoardTheme, type BoardTheme } from "@/lib/game/board-themes";
 import { useBoardSize } from "@/hooks/use-board-size";
