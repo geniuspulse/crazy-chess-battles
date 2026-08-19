@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
       .select("id")
       .single();
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-gules.vercel.app";
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-github.vercel.app";
     const res = await fetch("https://api.paychangu.com/payment", {
       method: "POST",
       headers: {

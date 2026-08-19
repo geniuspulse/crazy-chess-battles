@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     title: "Crazy Chess Battles — Compete. Win. Dominate.",
     description: "Malawi's competitive chess arena. Tournaments, prizes, and ranked battles.",
     type: "website",
-    url: "https://ccb-gules.vercel.app",
+    url: "https://ccb-github.vercel.app",
     siteName: "Crazy Chess Battles",
   },
   twitter: {

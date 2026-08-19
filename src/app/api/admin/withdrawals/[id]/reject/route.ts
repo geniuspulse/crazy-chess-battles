@@ -44,7 +44,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .eq("id", id);
 
     // Notify user
-    await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-gules.vercel.app"}/api/notifications/send`, {
+    await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-github.vercel.app"}/api/notifications/send`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -165,7 +165,7 @@ export async function POST(req: NextRequest) {
 
         // Notify all participants
         for (const p of participants) {
-          await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-gules.vercel.app"}/api/notifications/send`, {
+          await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-github.vercel.app"}/api/notifications/send`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
