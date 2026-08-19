@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Wallet, Smartphone, CreditCard, Check, Loader2, ArrowDown, ArrowUp, Clock, Cherry, ExternalLink } from "lucide-react";
+import { Wallet, Smartphone, CreditCard, Check, Loader2, ArrowDown, ArrowUp, Clock, Cherry, ExternalLink, Gift } from "lucide-react";
 import Link from "next/link";
 
 interface Deposit {
@@ -391,15 +391,15 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
           </div>
         )}
 
-        {/* Always show market link */}
+        {/* Referral bonus */}
         <div className="mt-3 pt-3 border-t border-red-500/10">
           <Link
-            href="/berry-market"
-            className="flex items-center justify-between text-sm text-red-500 font-medium hover:text-red-600"
+            href="/earn"
+            className="flex items-center justify-between text-sm text-ccb-primary font-medium hover:opacity-80"
           >
             <span className="flex items-center gap-1">
-              <ExternalLink className="w-3.5 h-3.5" />
-              Sell CCB on Berry Market
+              <Gift className="w-3.5 h-3.5" />
+              Earn more CCB 🍒
             </span>
             <span>→</span>
           </Link>

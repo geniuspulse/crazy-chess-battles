@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Trophy, Handshake, Frown, RefreshCw, Home, Swords } from "lucide-react";
+import { Trophy, Handshake, Frown, RefreshCw, Home, Swords, Cherry } from "lucide-react";
 import FireworksCanvas from "./fireworks-canvas";
 
 export type GameOutcome = "win" | "loss" | "draw";
@@ -14,6 +14,7 @@ interface VictoryOverlayProps {
   ratingChange?: number | null;
   moveCount: number;
   subtitle: string;
+  berriesAwarded?: number;
   onNewGame?: () => void;
   newGameLabel?: string;
   lobbyHref?: string;
@@ -26,6 +27,7 @@ export default function VictoryOverlay({
   ratingChange,
   moveCount,
   subtitle,
+  berriesAwarded,
   onNewGame,
   newGameLabel = "New Game",
   lobbyHref = "/play",

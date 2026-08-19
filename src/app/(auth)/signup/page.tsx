@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
@@ -38,8 +38,22 @@ export default function SignupPage() {
   const [chessLevel, setChessLevel] = useState<ChessLevel | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refCode, setRefCode] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
+
+  // Capture referral code from URL or localStorage
+  useEffect(() => {
+    const ref = searchParams.get("ref");
+    if (ref) {
+      setRefCode(ref);
+      localStorage.setItem("ccb_ref_code", ref);
+    } else {
+      const stored = localStorage.getItem("ccb_ref_code");
+      if (stored) setRefCode(stored);
+    }
+  }, [searchParams]);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,8 +84,7 @@ export default function SignupPage() {
       return;
     }
 
-    // After signup, call the API to set the initial ELO based on chess level
-    // The DB trigger creates the profile with default 1500; this corrects it.
+    // Set initial ELO
     if (data?.user?.id) {
       try {
         await fetch("/api/auth/set-rating", {
@@ -79,9 +92,19 @@ export default function SignupPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId: data.user.id }),
         });
+
+        // Create referral record if we have a ref code
+        const ref = refCode || localStorage.getItem("ccb_ref_code");
+        if (ref) {
+          await fetch("/api/berry/referral/track", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ referralCode: ref, referredId: data.user.id }),
+          });
+          localStorage.removeItem("ccb_ref_code");
+        }
       } catch {
-        // Non-critical — the profile still exists with 1500 default
-        // The user can report their level again later
+        // Non-critical
       }
     }
 
@@ -100,6 +123,11 @@ export default function SignupPage() {
           </Link>
           <h1 className="text-2xl font-bold mt-4">Join the battles</h1>
           <p className="text-sm text-ccb-muted mt-1">Create your free account</p>
+          {refCode && (
+            <p className="text-xs text-ccb-primary mt-2 font-medium">
+              🍒 Referred by {refCode} — they'll earn 1,000 CCB when you start playing!
+            </p>
+          )}
         </div>
 
         {error && (

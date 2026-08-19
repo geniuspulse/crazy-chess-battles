@@ -2,9 +2,18 @@ import Link from "next/link";
 import { Trophy, Swords, TrendingUp, Zap, Wallet, Crown, ArrowRight, Check } from "lucide-react";
 import HomeStats from "./home-stats";
 
-export default function LandingPage() {
+export default async function LandingPage({ searchParams }: { searchParams: Promise<{ ref?: string }> }) {
+  const { ref } = await searchParams;
+  const refParam = ref ? `?ref=${ref}` : "";
   return (
     <div className="min-h-screen flex flex-col">
+      {ref && (
+        <div className="bg-red-500/10 border-b border-red-500/20 py-2 px-4 text-center">
+          <p className="text-sm text-red-500 font-medium">
+            🍒 You were referred! Sign up to earn CRAZYCHESSBERRY rewards!
+          </p>
+        </div>
+      )}
       {/* Nav */}
       <nav className="border-b border-ccb-border bg-ccb-surface sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between h-14 sm:h-16">
@@ -16,7 +25,7 @@ export default function LandingPage() {
           </div>
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <Link href="/login" className="btn-ghost text-sm">Log in</Link>
-            <Link href="/signup" className="btn-primary text-sm px-3 sm:px-4">Sign up</Link>
+            <Link href={`/signup${refParam}`} className="btn-primary text-sm px-3 sm:px-4">Sign up</Link>
           </div>
         </div>
       </nav>
@@ -35,7 +44,7 @@ export default function LandingPage() {
             Malawi&apos;s competitive chess arena. Enter paid tournaments, climb the rankings, and claim your prize.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 px-4">
-            <Link href="/signup" className="btn-primary text-base px-8 py-3 w-full sm:w-auto">
+            <Link href={`/signup${refParam}`} className="btn-primary text-base px-8 py-3 w-full sm:w-auto">
               Start Playing
             </Link>
             <Link href="/leaderboard" className="btn-secondary text-base px-8 py-3 w-full sm:w-auto">
@@ -114,7 +123,7 @@ export default function LandingPage() {
           <p className="text-sm sm:text-base text-ccb-muted mb-6 sm:mb-8">
             Create your free account. Deposit with mobile money. Start winning prizes.
           </p>
-          <Link href="/signup" className="btn-primary text-base px-8 py-3 inline-flex items-center gap-2">
+          <Link href={`/signup${refParam}`} className="btn-primary text-base px-8 py-3 inline-flex items-center gap-2">
             Get Started <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
@@ -131,7 +140,7 @@ export default function LandingPage() {
           </div>
           <div className="flex items-center gap-4 sm:gap-6 text-xs sm:text-sm text-ccb-muted flex-wrap justify-center">
             <Link href="/login" className="hover:text-ccb-text transition-colors">Login</Link>
-            <Link href="/signup" className="hover:text-ccb-text transition-colors">Sign Up</Link>
+            <Link href={`/signup${refParam}`} className="hover:text-ccb-text transition-colors">Sign Up</Link>
             <Link href="/leaderboard" className="hover:text-ccb-text transition-colors">Leaderboard</Link>
             <Link href="/tournaments" className="hover:text-ccb-text transition-colors">Tournaments</Link>
             <Link href="/terms" className="hover:text-ccb-text transition-colors">Terms</Link>

@@ -28,21 +28,24 @@ export async function GET() {
     // Get referral stats
     const { data: referrals } = await admin
       .from("referrals")
-      .select("id, status, berries_awarded, created_at, completed_at")
+      .select("id, status, berries_awarded, created_at, completed_at, activation_condition, quick_matches_played")
       .eq("referrer_id", user.id)
       .order("created_at", { ascending: false });
 
     const totalReferrals = referrals?.length || 0;
     const completedReferrals = referrals?.filter(r => r.status === "rewarded").length || 0;
+    const pendingReferrals = referrals?.filter(r => r.status === "pending" || r.status === "signed_up").length || 0;
     const totalBerriesEarned = referrals?.reduce((sum, r) => sum + (r.berries_awarded || 0), 0) || 0;
 
     return NextResponse.json({
       referralCode,
-      shareUrl: `https://ccb-github.vercel.app/?ref=${referralCode}`,
+      shareUrl: `https://crazy-chess-battles.vercel.app/?ref=${referralCode}`,
+      rewardAmount: 1000,
+      rewardKwacha: 500,
       stats: {
         total: totalReferrals,
         completed: completedReferrals,
-        pending: totalReferrals - completedReferrals,
+        pending: pendingReferrals,
         berriesEarned: totalBerriesEarned,
       },
       referrals: referrals || [],

@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * Awards berries to the winner of a quick match game.
  * Only awards for: rated=true, tournament_id=null, no battle record, not vs bot.
  * Returns the number of berries awarded (0 if not eligible).
+ * Also triggers referral activation check.
  */
 export async function awardBerries(gameId: string, winnerId: string): Promise<number> {
   try {
@@ -18,8 +19,7 @@ export async function awardBerries(gameId: string, winnerId: string): Promise<nu
 
     if (!game) return 0;
 
-    // Must be rated
-    if (!game.rated) return 0;
+    // Berry amount depends on rated vs unrated (handled below after config load)
 
     // Must NOT be a tournament game
     if (game.tournament_id) return 0;
@@ -47,15 +47,22 @@ export async function awardBerries(gameId: string, winnerId: string): Promise<nu
 
     if (!config || !config.enabled) return 0;
 
-    const berries = config.berries_per_win;
+    const berries = game.rated ? config.berries_per_win : Math.floor(config.berries_per_win / 2);
 
     // Credit berries
     await admin.rpc("credit_berries", {
       p_user_id: winnerId,
       p_amount: berries,
       p_game_id: gameId,
-      p_description: `Quick match win (${game.time_control})`,
+      p_description: `Quick match win (${game.time_control}${game.rated ? "" : " · casual"})`,
     });
+
+    // Trigger referral activation for BOTH players (winner and loser)
+    await admin.rpc("check_referral_activation", { p_user_id: winnerId, p_action: "quick_match" });
+    const loserId = game.white_player_id === winnerId ? game.black_player_id : game.white_player_id;
+    if (loserId && loserId !== BOT_USER_ID) {
+      await admin.rpc("check_referral_activation", { p_user_id: loserId, p_action: "quick_match" });
+    }
 
     return berries;
   } catch (e) {

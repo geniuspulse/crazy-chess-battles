@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Swords, Trophy, TrendingUp, User, Wallet, Shield, Coins, Cherry, Gift } from "lucide-react";
+import { Home, Swords, Trophy, TrendingUp, User, Wallet, Shield, Coins, Gift } from "lucide-react";
 
 interface Profile {
   username: string | null;
@@ -29,7 +29,6 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
     { href: "/play", label: "Play", icon: Swords },
     { href: "/battles", label: "Battles", icon: Coins },
     { href: "/tournaments", label: "Tournos", icon: Trophy },
-    { href: "/berry-market", label: "Berry Market", icon: Cherry },
     { href: "/earn", label: "Earn CCB", icon: Gift },
     { href: "/leaderboard", label: "Ranks", icon: TrendingUp },
     { href: "/history", label: "History", icon: TrendingUp },
@@ -86,9 +85,9 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
           </div>
 
           <div className="flex items-center gap-3">
-            <Link href="/berry-market" className="flex items-center gap-1.5 text-sm">
+            <Link href="/earn" className="flex items-center gap-1.5 text-sm">
               <Gift className="w-4 h-4 text-orange-500" />
-              <span className="font-bold">CCB Market</span>
+              <span className="font-bold">Earn CCB</span>
             </Link>
             <div className="flex items-center gap-2">
               <span className={`text-sm font-medium ${tier.color}`}>{tier.label}</span>

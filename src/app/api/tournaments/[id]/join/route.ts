@@ -147,7 +147,21 @@ export async function POST(
       return NextResponse.json({ error: joinErr.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, paidEntryFee });
+    // Trigger referral activation for joining a tournament
+    const admin2 = createAdminClient();
+    await admin2.rpc("check_referral_activation", { p_user_id: user.id, p_action: "tournament" });
+
+    // Award 50 berries for joining a tournament
+    const { data: tConfig } = await admin2.from("berry_config").select("enabled").limit(1).single();
+    if (tConfig?.enabled) {
+      await admin2.rpc("credit_berries", {
+        p_user_id: user.id,
+        p_amount: 50,
+        p_description: "Joined a tournament!",
+      });
+    }
+
+    return NextResponse.json({ success: true, paidEntryFee, berriesAwarded: 50 });
   } catch (e: any) {
     return NextResponse.json(
       { error: e.message || "Failed to join tournament" },

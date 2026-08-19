@@ -59,6 +59,10 @@ export async function POST(req: NextRequest) {
           })
           .eq("id", battleId);
 
+        // Trigger referral activation for both players
+        await admin.rpc("check_referral_activation", { p_user_id: battle.white_player_id, p_action: "battle" });
+        await admin.rpc("check_referral_activation", { p_user_id: battle.black_player_id, p_action: "battle" });
+
         // Release escrow
         await admin
           .from("battle_escrow")
@@ -151,6 +155,10 @@ export async function POST(req: NextRequest) {
       .from("battle_escrow")
       .update({ status: "released", released_at: new Date().toISOString() })
       .eq("battle_id", battleId);
+
+    // Trigger referral activation for both players
+    await admin.rpc("check_referral_activation", { p_user_id: battle.white_player_id, p_action: "battle" });
+    await admin.rpc("check_referral_activation", { p_user_id: battle.black_player_id, p_action: "battle" });
 
     return NextResponse.json({ settled: true, winnerId, payout });
   } catch (e: any) {

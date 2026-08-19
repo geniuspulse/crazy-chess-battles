@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Cherry, Flame, Share2, MessageCircle, UserPlus, Gamepad2, User, Check, Loader2, Gift, TrendingUp, Copy } from "lucide-react";
+import { Cherry, Flame, Share2, MessageCircle, Gamepad2, User, Check, Loader2, Gift, Copy, Users, Trophy, Coins, Wallet } from "lucide-react";
 
 interface Props {
   berryBalance: number;
@@ -27,7 +27,8 @@ export default function EarnClient({ berryBalance, userId }: Props) {
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [messages, setMessages] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [referralCode, setReferralCode] = useState("");
-  const [referralStats, setReferralStats] = useState({ total: 0, completed: 0, berriesEarned: 0 });
+  const [referralStats, setReferralStats] = useState({ total: 0, completed: 0, pending: 0, berriesEarned: 0 });
+  const [referrals, setReferrals] = useState<any[]>([]);
   const [copied, setCopied] = useState(false);
   const [config, setConfig] = useState<any>({});
 
@@ -51,6 +52,7 @@ export default function EarnClient({ berryBalance, userId }: Props) {
         const referralData = await referralRes.json();
         setReferralCode(referralData.referralCode || "");
         setReferralStats(referralData.stats || { total: 0, completed: 0, berriesEarned: 0 });
+        setReferrals(referralData.referrals || []);
       }
     } catch {}
   }, []);
@@ -108,7 +110,7 @@ export default function EarnClient({ berryBalance, userId }: Props) {
   };
 
   const handleShare = async (platform: "whatsapp" | "copy") => {
-    const shareUrl = `https://ccb-github.vercel.app/?ref=${referralCode}`;
+    const shareUrl = `https://crazy-chess-battles.vercel.app/?ref=${referralCode}`;
     const shareText = `🏆 I'm playing chess on Crazy Chess Battles! Join me and earn CCB berries → ${shareUrl}`;
 
     if (platform === "whatsapp") {
@@ -121,11 +123,9 @@ export default function EarnClient({ berryBalance, userId }: Props) {
   };
 
   const handleWhatsAppStatus = async () => {
-    const shareUrl = `https://ccb-github.vercel.app/?ref=${referralCode}`;
+    const shareUrl = `https://crazy-chess-battles.vercel.app/?ref=${referralCode}`;
     const statusText = `🏆 Playing chess on Crazy Chess Battles! Join & earn CCB berries → ${shareUrl}`;
-    // Open WhatsApp with pre-filled status text
     window.open(`https://wa.me/?text=${encodeURIComponent(statusText)}`, "_blank");
-    // Claim the reward
     await handleClaim("whatsapp_status");
   };
 
@@ -192,6 +192,13 @@ export default function EarnClient({ berryBalance, userId }: Props) {
     { days: 30, berries: config.berry_streak_30day || 50 },
   ];
 
+  const statusLabels: Record<string, string> = {
+    pending: "Pending — waiting for activation",
+    signed_up: "Signed up — not yet active",
+    activated: "Activated — reward pending",
+    rewarded: "✅ Rewarded — 1000 CCB",
+  };
+
   return (
     <div className="space-y-4 sm:space-y-6 max-w-2xl mx-auto pb-20 sm:pb-0">
       {/* Header */}
@@ -201,7 +208,7 @@ export default function EarnClient({ berryBalance, userId }: Props) {
           Earn CRAZYCHESSBERRY
         </h1>
         <p className="text-sm text-ccb-muted mt-1">
-          Complete tasks to earn CCB 🍒 — trade them on the market or redeem for cash
+          Complete tasks to earn CCB 🍒 — redeem for cash in your wallet
         </p>
       </div>
 
@@ -215,14 +222,9 @@ export default function EarnClient({ berryBalance, userId }: Props) {
             <p className="text-3xl font-bold mt-1">{berryBalance.toLocaleString()} 🍒</p>
             <p className="text-xs text-ccb-muted">≈ MWK {(berryBalance * 0.5).toLocaleString()}</p>
           </div>
-          <div className="flex gap-2">
-            <a href="/berry-market" className="px-3 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600">
-              Market
-            </a>
-            <a href="/wallet" className="px-3 py-2 rounded-lg bg-ccb-primary text-white text-sm font-medium hover:bg-ccb-primary/90">
-              Wallet
-            </a>
-          </div>
+          <a href="/wallet" className="px-4 py-2 rounded-lg bg-ccb-primary text-white text-sm font-medium hover:bg-ccb-primary/90">
+            Wallet
+          </a>
         </div>
       </div>
 
@@ -237,6 +239,82 @@ export default function EarnClient({ berryBalance, userId }: Props) {
           {messages.text}
         </div>
       )}
+
+      {/* Referral Card — the big one */}
+      <div className="card border-2 border-ccb-primary/30 bg-gradient-to-br from-ccb-primary/5 to-ccb-surface p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="w-10 h-10 rounded-full bg-ccb-primary/10 flex items-center justify-center">
+            <Users className="w-5 h-5 text-ccb-primary" />
+          </div>
+          <div>
+            <h2 className="font-bold text-lg">Refer & Earn MK500</h2>
+            <p className="text-xs text-ccb-muted">Get 1,000 CCB (≈ MK500) for each active referral</p>
+          </div>
+        </div>
+
+        {/* Referral code */}
+        <div className="flex items-center gap-2">
+          <div className="flex-1 px-4 py-3 rounded-lg bg-ccb-dark border border-ccb-border font-mono text-sm">
+            {referralCode || "Loading..."}
+          </div>
+          <button
+            onClick={() => handleShare("copy")}
+            className="px-3 py-3 rounded-lg bg-ccb-surface border border-ccb-border hover:bg-ccb-border/50"
+          >
+            {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={() => handleShare("whatsapp")}
+            className="px-3 py-3 rounded-lg bg-green-500 text-white hover:bg-green-600"
+          >
+            <MessageCircle className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Activation conditions */}
+        <div className="rounded-lg bg-ccb-surface/50 p-3 space-y-2">
+          <p className="text-xs font-medium text-ccb-muted">Reward activates when your referral:</p>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="flex items-center gap-1.5"><Gamepad2 className="w-3.5 h-3.5 text-ccb-primary" /> Plays 10 quick matches</div>
+            <div className="flex items-center gap-1.5"><Coins className="w-3.5 h-3.5 text-ccb-primary" /> Plays 1 chess battle</div>
+            <div className="flex items-center gap-1.5"><Trophy className="w-3.5 h-3.5 text-ccb-primary" /> Joins a tournament</div>
+            <div className="flex items-center gap-1.5"><Wallet className="w-3.5 h-3.5 text-ccb-primary" /> Tops up wallet</div>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="text-center">
+            <p className="text-2xl font-bold">{referralStats.total}</p>
+            <p className="text-xs text-ccb-muted">Total</p>
+          </div>
+          <div className="text-center">
+            <p className="text-2xl font-bold text-ccb-primary">{referralStats.completed}</p>
+            <p className="text-xs text-ccb-muted">Rewarded</p>
+          </div>
+          <div className="text-center">
+            <p className="text-2xl font-bold text-orange-500">{referralStats.pending}</p>
+            <p className="text-xs text-ccb-muted">Pending</p>
+          </div>
+        </div>
+
+        {/* Referral list */}
+        {referrals.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-ccb-muted">Your referrals:</p>
+            {referrals.slice(0, 5).map((r: any) => (
+              <div key={r.id} className="flex items-center justify-between text-xs px-3 py-2 rounded-lg bg-ccb-surface/50">
+                <span className="text-ccb-muted">
+                  {r.quick_matches_played > 0 ? `${r.quick_matches_played}/10 matches` : "Waiting"}
+                </span>
+                <span className={r.status === "rewarded" ? "text-green-500 font-medium" : "text-orange-500"}>
+                  {statusLabels[r.status] || r.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Daily Check-in */}
       <div className={`card p-4 ${checkinStatus.checkedInToday ? "opacity-60" : "border-ccb-primary/30"}`}>
@@ -267,168 +345,75 @@ export default function EarnClient({ berryBalance, userId }: Props) {
               className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-50 flex items-center gap-1.5"
             >
               {loading.checkin ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              Claim +{config.berry_daily_login || 5} 🍒
+              Check in
             </button>
           )}
         </div>
-
-        {/* Streak progress */}
-        {checkinStatus.currentStreak > 0 && (
-          <div className="mt-3 pt-3 border-t border-ccb-border">
-            <div className="flex items-center gap-2 overflow-x-auto">
-              {streakMilestones.map((m) => {
-                const reached = checkinStatus.currentStreak >= m.days;
-                return (
-                  <div
-                    key={m.days}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap ${
-                      reached ? "bg-orange-500/10 text-orange-500" : "bg-ccb-surface text-ccb-muted"
-                    }`}
-                  >
-                    <Flame className={`w-3 h-3 ${reached ? "text-orange-500" : "text-ccb-muted"}`} />
-                    {m.days}d: +{m.berries} 🍒
-                  </div>
-                );
-              })}
+        {/* Streak milestones */}
+        <div className="flex gap-2 mt-3">
+          {streakMilestones.map((m) => (
+            <div key={m.days} className={`flex-1 text-center py-2 rounded-lg text-xs ${
+              checkinStatus.currentStreak >= m.days ? "bg-green-500/10 text-green-600" : "bg-ccb-surface text-ccb-muted"
+            }`}>
+              <p className="font-bold">{m.days}d</p>
+              <p className="text-[10px]">+{m.berries} 🍒</p>
             </div>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
 
       {/* One-time tasks */}
       <div className="space-y-3">
-        <h2 className="text-sm font-medium text-ccb-muted uppercase tracking-wide">One-Time Rewards</h2>
+        <h3 className="text-sm font-medium text-ccb-muted px-1">One-time Rewards</h3>
         {tasks.filter(t => t.type === "one-time").map((task) => {
           const Icon = task.icon;
-          const isClaimed = task.claimed || claimedActions.has(task.action!);
           return (
-            <div key={task.id} className={`card p-4 ${isClaimed ? "opacity-60" : ""}`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    isClaimed ? "bg-green-500/10" : "bg-red-500/10"
-                  }`}>
-                    {isClaimed ? (
-                      <Check className="w-5 h-5 text-green-500" />
-                    ) : (
-                      <Icon className="w-5 h-5 text-red-500" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-medium text-sm">{task.title}</p>
-                    <p className="text-xs text-ccb-muted">{task.desc}</p>
-                  </div>
+            <div key={task.id} className="card p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                  task.claimed ? "bg-green-500/10" : "bg-ccb-primary/10"
+                }`}>
+                  {task.claimed ? <Check className="w-5 h-5 text-green-500" /> : <Icon className="w-5 h-5 text-ccb-primary" />}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-red-500">+{task.berries} 🍒</span>
-                  {!isClaimed && task.id === "share_app" && (
-                    <button
-                      onClick={() => handleClaim(task.action!)}
-                      disabled={loading[task.action!]}
-                      className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-medium hover:bg-red-600 disabled:opacity-50 flex items-center gap-1"
-                    >
-                      {loading[task.action!] ? <Loader2 className="w-3 h-3 animate-spin" /> : "Claim"}
-                    </button>
-                  )}
-                  {!isClaimed && task.id === "whatsapp_status" && (
-                    <button
-                      onClick={handleWhatsAppStatus}
-                      disabled={loading[task.action!]}
-                      className="px-3 py-1.5 rounded-lg bg-green-500 text-white text-xs font-medium hover:bg-green-600 disabled:opacity-50 flex items-center gap-1"
-                    >
-                      {loading[task.action!] ? <Loader2 className="w-3 h-3 animate-spin" /> : <MessageCircle className="w-3 h-3" />}
-                      Post & Claim
-                    </button>
-                  )}
-                  {!isClaimed && task.id !== "share_app" && task.id !== "whatsapp_status" && (
-                    <button
-                      onClick={() => handleClaim(task.action!)}
-                      disabled={loading[task.action!]}
-                      className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-medium hover:bg-red-600 disabled:opacity-50 flex items-center gap-1"
-                    >
-                      {loading[task.action!] ? <Loader2 className="w-3 h-3 animate-spin" /> : "Claim"}
-                    </button>
-                  )}
+                <div>
+                  <p className="font-medium text-sm">{task.title}</p>
+                  <p className="text-xs text-ccb-muted">{task.desc}</p>
                 </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-red-500">+{task.berries} 🍒</span>
+                {task.claimable && !task.claimed && task.action && (
+                  <button
+                    onClick={() => handleClaim(task.action!)}
+                    disabled={loading[task.action!]}
+                    className="px-3 py-1.5 rounded-lg bg-ccb-primary text-white text-xs font-medium hover:bg-ccb-primary/90 disabled:opacity-50"
+                  >
+                    {loading[task.action!] ? <Loader2 className="w-3 h-3 animate-spin" /> : "Claim"}
+                  </button>
+                )}
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Share buttons */}
-      <div className="card p-4">
-        <h3 className="font-medium text-sm mb-3 flex items-center gap-1.5">
-          <Share2 className="w-4 h-4 text-ccb-primary" />
-          Share & Refer Friends
-        </h3>
-        <p className="text-xs text-ccb-muted mb-3">
-          Get {config.berry_referral_signup || 50} CCB for each friend who joins using your referral link!
-        </p>
-        <div className="flex gap-2 mb-3">
-          <button
-            onClick={() => handleShare("whatsapp")}
-            className="flex-1 py-2.5 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 flex items-center justify-center gap-2"
-          >
-            <MessageCircle className="w-4 h-4" />
-            WhatsApp
-          </button>
-          <button
-            onClick={() => handleShare("copy")}
-            className="flex-1 py-2.5 rounded-lg bg-ccb-surface border border-ccb-border text-sm font-medium hover:border-ccb-primary flex items-center justify-center gap-2"
-          >
-            {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-            {copied ? "Copied!" : "Copy Link"}
-          </button>
-        </div>
-        <div className="bg-ccb-surface rounded-lg p-2 text-xs text-ccb-muted text-center font-mono">
-          {referralCode ? `ccb-github.vercel.app/?ref=${referralCode}` : "Loading..."}
-        </div>
-        {referralStats.total > 0 && (
-          <div className="mt-3 pt-3 border-t border-ccb-border flex justify-between text-xs">
-            <span className="text-ccb-muted">
-              <UserPlus className="w-3 h-3 inline" /> {referralStats.total} referred ({referralStats.completed} joined)
-            </span>
-            <span className="font-medium text-red-500">
-              +{referralStats.berriesEarned} 🍒 earned from referrals
-            </span>
+      {/* WhatsApp status */}
+      <button
+        onClick={handleWhatsAppStatus}
+        disabled={claimedActions.has("whatsapp_status")}
+        className="w-full card p-4 flex items-center justify-between hover:bg-ccb-surface/50 disabled:opacity-50"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center">
+            <MessageCircle className="w-5 h-5 text-green-500" />
           </div>
-        )}
-      </div>
-
-      {/* Game rewards info */}
-      <div className="card p-4 bg-gradient-to-br from-ccb-primary/5 to-ccb-surface">
-        <h3 className="font-medium text-sm mb-2 flex items-center gap-1.5">
-          <TrendingUp className="w-4 h-4 text-ccb-primary" />
-          Earn From Playing
-        </h3>
-        <div className="space-y-1.5 text-xs">
-          <div className="flex justify-between">
-            <span className="text-ccb-muted">Win a quick match (10 CCB = MWK 5)</span>
-            <span className="font-medium text-red-500">+{config.berry_daily_login ? 10 : 10} 🍒</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-ccb-muted">Draw a quick match (2 CCB = MWK 1)</span>
-            <span className="font-medium text-red-500">+2 🍒</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-ccb-muted">3-day login streak (5 CCB = MWK 2.50)</span>
-            <span className="font-medium text-red-500">+{config.berry_streak_3day || 5} 🍒 bonus</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-ccb-muted">7-day login streak (10 CCB = MWK 5)</span>
-            <span className="font-medium text-red-500">+{config.berry_streak_7day || 10} 🍒 bonus</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-ccb-muted">30-day login streak (50 CCB = MWK 25)</span>
-            <span className="font-medium text-red-500">+{config.berry_streak_30day || 50} 🍒 bonus</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-ccb-muted">Friend joins via referral (50 CCB = MWK 25)</span>
-            <span className="font-medium text-red-500">+{config.berry_referral_signup || 50} 🍒</span>
+          <div className="text-left">
+            <p className="font-medium text-sm">Post WhatsApp Status</p>
+            <p className="text-xs text-ccb-muted">+{config.berry_whatsapp_status || 20} 🍒 for posting about CCB</p>
           </div>
         </div>
-      </div>
+        {!claimedActions.has("whatsapp_status") && <span className="text-xs text-ccb-primary font-medium">Open →</span>}
+      </button>
     </div>
   );
 }
