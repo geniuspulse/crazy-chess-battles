@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
- * One-time migration: creates Chess Battles tables.
+ * Runs battle table migrations using direct Postgres connection.
+ * Tries pooler URL first, falls back to direct connection.
  * Protected by CRON_SECRET.
  */
+
 const MIGRATION_SQL = `-- ============================================================
 -- Chess Battles — stake-based head-to-head chess for money
 -- ============================================================
@@ -25,11 +28,10 @@ CREATE TABLE IF NOT EXISTS battle_config (
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Single row only
 INSERT INTO battle_config (id) VALUES (gen_random_uuid())
 ON CONFLICT DO NOTHING;
 
--- Battle queue — players waiting to be matched
+-- Battle queue
 CREATE TABLE IF NOT EXISTS battle_queue (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   player_id       UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -66,30 +68,22 @@ CREATE TABLE IF NOT EXISTS battles (
   notes           TEXT
 );
 
--- Indexes
 CREATE INDEX IF NOT EXISTS idx_battle_queue_stake ON battle_queue(stake_cents, status);
 CREATE INDEX IF NOT EXISTS idx_battle_queue_player ON battle_queue(player_id);
 CREATE INDEX IF NOT EXISTS idx_battles_status ON battles(status);
 CREATE INDEX IF NOT EXISTS idx_battles_players ON battles(white_player_id, black_player_id);
 
--- Enable RLS
 ALTER TABLE battle_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE battle_queue ENABLE ROW LEVEL SECURITY;
 ALTER TABLE battles ENABLE ROW LEVEL SECURITY;
 
--- Policies: anyone authenticated can read config
 CREATE POLICY "Anyone can read battle_config" ON battle_config FOR SELECT TO authenticated USING (true);
-
--- Battle queue: users see their own queue entries
 CREATE POLICY "Users read own queue entries" ON battle_queue FOR SELECT TO authenticated USING (player_id = auth.uid());
 CREATE POLICY "Users insert own queue entries" ON battle_queue FOR INSERT TO authenticated WITH CHECK (player_id = auth.uid());
 CREATE POLICY "Users update own queue entries" ON battle_queue FOR UPDATE TO authenticated USING (player_id = auth.uid());
 CREATE POLICY "Users delete own queue entries" ON battle_queue FOR DELETE TO authenticated USING (player_id = auth.uid());
-
--- Battles: players can read their own battles
 CREATE POLICY "Players read own battles" ON battles FOR SELECT TO authenticated USING (white_player_id = auth.uid() OR black_player_id = auth.uid());
 
--- Insert a battle_queue table for tracking locked funds (audit)
 CREATE TABLE IF NOT EXISTS battle_escrow (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   battle_id       UUID REFERENCES battles(id) ON DELETE CASCADE,
@@ -103,13 +97,10 @@ CREATE TABLE IF NOT EXISTS battle_escrow (
 ALTER TABLE battle_escrow ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Players read own escrow" ON battle_escrow FOR SELECT TO authenticated USING (player_id = auth.uid());
 
--- Admin can read all battle tables (via service role, bypasses RLS)
-
 -- ============================================================
--- Wallet helper RPC functions (safety net — may already exist)
+-- Wallet helper RPC functions
 -- ============================================================
 
--- Ensure wallet_balance_cents column exists on profiles
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -120,7 +111,6 @@ BEGIN
   END IF;
 END $$;
 
--- Credit wallet
 CREATE OR REPLACE FUNCTION public.credit_wallet(p_user_id UUID, p_amount_cents INT)
 RETURNS VOID AS $$
 BEGIN
@@ -128,7 +118,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Debit wallet (fails if insufficient balance)
 CREATE OR REPLACE FUNCTION public.debit_wallet(p_user_id UUID, p_amount_cents INT)
 RETURNS VOID AS $$
 BEGIN
@@ -141,9 +130,35 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Grant access
 GRANT EXECUTE ON FUNCTION public.credit_wallet(UUID, INT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.debit_wallet(UUID, INT) TO authenticated;
+
+-- ============================================================
+-- Withdrawals table
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS withdrawals (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  amount_cents    INT NOT NULL,
+  phone           TEXT NOT NULL,
+  operator_name   TEXT NOT NULL,
+  operator_ref_id TEXT,
+  status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'completed', 'failed')),
+  admin_notes     TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE withdrawals ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users read own withdrawals" ON withdrawals FOR SELECT TO authenticated USING (user_id = auth.uid());
+CREATE POLICY "Users insert own withdrawals" ON withdrawals FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+CREATE POLICY "Admins read all withdrawals" ON withdrawals FOR SELECT TO authenticated USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
+);
+CREATE POLICY "Admins update all withdrawals" ON withdrawals FOR UPDATE TO authenticated USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
+);
 `;
 
 export async function POST(req: NextRequest) {
@@ -153,24 +168,70 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!process.env.DATABASE_URL) {
+    const dbUrl = process.env.DATABASE_URL;
+    if (!dbUrl) {
       return NextResponse.json({ error: "DATABASE_URL not set" }, { status: 500 });
     }
 
-    const { Client } = await import("pg");
-    const client = new Client({ connectionString: process.env.DATABASE_URL });
-    await client.connect();
-    await client.query(MIGRATION_SQL);
+    // Parse the existing URL and construct alternative connection strings
+    const parsed = new URL(dbUrl);
+    const password = parsed.password;
+    const projectRef = parsed.username.replace("postgres.", "");
 
-    const res = await client.query(
-      "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename LIKE 'battle%'"
-    );
-    await client.end();
+    // Try 1: Original pooler URL (session mode, port 5432)
+    // Try 2: Transaction pooler (port 6543) — original
+    // Try 3: Direct connection
+    const connections = [
+      // Session mode pooler (port 5432 — more reliable for serverless migrations)
+      {
+        name: "pooler-session-5432",
+        url: `postgresql://postgres.${projectRef}:${password}@aws-0-eu-central-1.pooler.supabase.com:5432/postgres?pgbouncer=true`,
+      },
+      // Direct connection (no pooler)
+      {
+        name: "direct-5432",
+        url: `postgresql://postgres:${password}@db.${projectRef}.supabase.co:5432/postgres`,
+      },
+      // Original pooler URL
+      {
+        name: "pooler-tx-6543",
+        url: dbUrl,
+      },
+    ];
+
+    const { Client } = await import("pg");
+    const errors: string[] = [];
+
+    for (const conn of connections) {
+      try {
+        const client = new Client({
+          connectionString: conn.url,
+          connectionTimeoutMillis: 10000,
+        });
+        await client.connect();
+        await client.query(MIGRATION_SQL);
+
+        const res = await client.query(
+          "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename LIKE 'battle%' OR tablename = 'withdrawals'"
+        );
+        await client.end();
+
+        return NextResponse.json({
+          success: true,
+          connection: conn.name,
+          tables: res.rows.map((r: { tablename: string }) => r.tablename),
+        });
+      } catch (err: any) {
+        errors.push(`${conn.name}: ${err.message}`);
+      }
+    }
 
     return NextResponse.json({
-      success: true,
-      tables: res.rows.map((r: { tablename: string }) => r.tablename),
-    });
+      error: "All connection attempts failed",
+      errors,
+      projectRef,
+      passwordLength: password?.length || 0,
+    }, { status: 500 });
   } catch (e: any) {
     console.error("Migration error:", e);
     return NextResponse.json({ error: e.message || "Migration failed" }, { status: 500 });
