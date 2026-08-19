@@ -4,12 +4,16 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
 import { useRealtimeGame, type GameState } from "@/hooks/use-realtime-game";
-import { Clock, Flag, Eye, ArrowLeft } from "lucide-react";
+import { Clock, Flag, Eye, ArrowLeft, Volume2, VolumeX } from "lucide-react";
 import Link from "next/link";
 import { getCapturedPieces, getCheckSquare } from "@/lib/game/board-helpers";
+import { playSound, detectMoveSound, setSoundEnabled } from "@/lib/game/sound";
+import { getStoredBoardTheme, type BoardTheme } from "@/lib/game/board-themes";
 import MoveHistory from "./move-history";
 import CapturedPieces from "./captured-pieces";
 import VictoryOverlay, { type GameOutcome } from "./victory-overlay";
+import PromotionDialog from "./promotion-dialog";
+import BoardThemePicker from "./board-theme-picker";
 
 interface GameClientProps {
   gameId: string;
@@ -46,7 +50,12 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [drawOffered, setDrawOffered] = useState(false);
   const [opponentDrawOffer, setOpponentDrawOffer] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
+  const [boardTheme, setBoardTheme] = useState<BoardTheme>(getStoredBoardTheme());
+  const [pendingPromotion, setPendingPromotion] = useState<{ from: string; to: string } | null>(null);
   const lastFenRef = useRef(game.fen);
+  const soundPlayedForEnd = useRef(false);
+  const prevFenRef = useRef(game.fen);
 
   useEffect(() => {
     if (drawOffer === "offer") setOpponentDrawOffer(true);
@@ -63,13 +72,41 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const captured = useMemo(() => getCapturedPieces(fen), [fen]);
   const checkSquare = useMemo(() => getCheckSquare(fen), [fen]);
 
+  // Play sounds when FEN changes (opponent moves come via realtime)
+  useEffect(() => {
+    if (prevFenRef.current !== game.fen && !pendingPromotion) {
+      // Detect what changed by replaying
+      try {
+        const tempGame = new Chess(prevFenRef.current);
+        const nextGame = new Chess(game.fen);
+        // Simple approach: if it's not our move that caused the change, play sound
+        const history = nextGame.history({ verbose: true });
+        const last = history[history.length - 1];
+        if (last) {
+          const soundType = detectMoveSound(last);
+          playSound(soundType);
+          if (nextGame.inCheck() && !nextGame.isCheckmate()) {
+            setTimeout(() => playSound("check"), 100);
+          }
+        }
+      } catch {}
+    }
+    prevFenRef.current = game.fen;
+  }, [game.fen, pendingPromotion]);
+
+  // Play game-over sound
+  useEffect(() => {
+    if (gameEnded && !soundPlayedForEnd.current) {
+      soundPlayedForEnd.current = true;
+      playSound("gameEnd");
+    }
+  }, [gameEnded]);
+
   // Build move history from game PGN when FEN changes
   useEffect(() => {
     setFen(game.fen);
     lastFenRef.current = game.fen;
     try {
-      const tempGame = new Chess(game.fen);
-      // Reconstruct move history from the game's pgn if available
       if (game.pgn) {
         const pgnGame = new Chess();
         pgnGame.loadPgn(game.pgn);
@@ -78,7 +115,6 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         const last = verbose[verbose.length - 1];
         setLastMove(last ? { from: last.from, to: last.to } : null);
       } else {
-        // Fallback: derive from move count
         setMoveHistory([]);
         setLastMove(null);
       }
@@ -113,9 +149,22 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
     return formatClock(Math.max(0, baseMs - elapsed));
   };
 
+  // Check if a move is a pawn promotion
+  const isPromotionMove = useCallback((from: string, to: string): boolean => {
+    const game2 = new Chess(fen);
+    const piece = game2.get(from as any);
+    if (!piece || piece.type !== "p") return false;
+    const rank = to[1];
+    return (piece.color === "w" && rank === "8") || (piece.color === "b" && rank === "1");
+  }, [fen]);
+
   const onDrop = useCallback(
     (sourceSquare: string, targetSquare: string): boolean => {
       if (isSpectator || !myTurn || gameEnded) return false;
+      if (isPromotionMove(sourceSquare, targetSquare)) {
+        setPendingPromotion({ from: sourceSquare, to: targetSquare });
+        return false;
+      }
       try {
         const tempGame = new Chess(fen);
         const move = tempGame.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
@@ -123,19 +172,75 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         setFen(tempGame.fen());
         setMoveHistory(tempGame.history());
         setLastMove({ from: sourceSquare, to: targetSquare });
+        playSound(detectMoveSound(move));
+        if (tempGame.inCheck() && !tempGame.isCheckmate()) {
+          setTimeout(() => playSound("check"), 100);
+        }
       } catch {
         return false;
       }
       makeMove(sourceSquare, targetSquare);
       return true;
     },
-    [isSpectator, myTurn, gameEnded, fen, makeMove]
+    [isSpectator, myTurn, gameEnded, fen, makeMove, isPromotionMove]
   );
+
+  // Handle promotion selection
+  const handlePromotionSelect = useCallback((piece: "q" | "r" | "b" | "n") => {
+    if (pendingPromotion) {
+      try {
+        const tempGame = new Chess(fen);
+        const move = tempGame.move({ from: pendingPromotion.from, to: pendingPromotion.to, promotion: piece });
+        if (move) {
+          setFen(tempGame.fen());
+          setMoveHistory(tempGame.history());
+          setLastMove({ from: pendingPromotion.from, to: pendingPromotion.to });
+          playSound(detectMoveSound(move));
+        }
+      } catch {}
+      makeMove(pendingPromotion.from, pendingPromotion.to);
+    }
+    setPendingPromotion(null);
+  }, [pendingPromotion, fen, makeMove]);
 
   const handleResign = async () => {
     await resign();
     setShowResignConfirm(false);
   };
+
+  const toggleSound = () => {
+    const newVal = !soundOn;
+    setSoundOn(newVal);
+    setSoundEnabled(newVal);
+  };
+
+  // Play game start sound on mount
+  useEffect(() => {
+    playSound("gameStart");
+  }, []);
+
+  const renderPlayerBar = (data: { name: string; rating?: number | string | null; symbol: string; captured: string[]; advantage: number; clock: string; isActive: boolean }) => (
+    <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2">
+      <div className="flex items-center gap-2">
+        <div className="w-9 h-9 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
+          <span className="text-base">{data.symbol}</span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-sm font-medium leading-tight">{data.name}</span>
+          <div className="flex items-center gap-2">
+            {data.rating && <span className="text-xs text-ccb-muted">{data.rating}</span>}
+            <CapturedPieces pieces={data.captured} advantage={data.advantage} perspective="top" />
+          </div>
+        </div>
+      </div>
+      <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-lg font-bold transition-colors ${
+        data.isActive ? "bg-ccb-primary/15 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
+      }`}>
+        <Clock className="w-4 h-4" />
+        {data.clock}
+      </div>
+    </div>
+  );
 
   // ---- SPECTATOR VIEW ----
   if (isSpectator) {
@@ -149,63 +254,20 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
             Connecting...
           </div>
         )}
-        {/* Top player (Black) */}
-        <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2 mb-1">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
-              <span className="text-base">{topPlayer.symbol}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-medium leading-tight">{topPlayer.name}</span>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-ccb-muted">{topPlayer.rating || "—"}</span>
-                <CapturedPieces pieces={topPlayer.captured} advantage={topPlayer.advantage} perspective="top" />
-              </div>
-            </div>
-          </div>
-          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-lg font-bold transition-colors ${
-            topPlayer.isActive ? "bg-ccb-primary/15 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
-          }`}>
-            <Clock className="w-4 h-4" />
-            {topPlayer.clock}
-          </div>
-        </div>
-
-        {/* Chessboard */}
-        <div className="w-full max-w-[600px] aspect-square mx-auto">
+        {renderPlayerBar(topPlayer)}
+        <div className="w-full max-w-[600px] aspect-square mx-auto mt-1">
           <Chessboard options={{
             position: fen,
             boardOrientation: "white",
             onPieceDrop: () => false,
             allowDragging: false,
             squareStyles: squareStyles,
-            darkSquareStyle: { backgroundColor: "#312e81" },
-            lightSquareStyle: { backgroundColor: "#e0e7ff" },
+            darkSquareStyle: { backgroundColor: boardTheme.dark },
+            lightSquareStyle: { backgroundColor: boardTheme.light },
             boardStyle: { borderRadius: "8px", overflow: "hidden" },
           }} />
         </div>
-
-        {/* Bottom player (White) */}
-        <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2 mt-1">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
-              <span className="text-base">{bottomPlayer.symbol}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-medium leading-tight">{bottomPlayer.name}</span>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-ccb-muted">{bottomPlayer.rating || "—"}</span>
-                <CapturedPieces pieces={bottomPlayer.captured} advantage={bottomPlayer.advantage} perspective="bottom" />
-              </div>
-            </div>
-          </div>
-          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-lg font-bold transition-colors ${
-            bottomPlayer.isActive ? "bg-ccb-primary/15 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
-          }`}>
-            <Clock className="w-4 h-4" />
-            {bottomPlayer.clock}
-          </div>
-        </div>
+        {renderPlayerBar(bottomPlayer)}
       </div>
     );
 
@@ -215,9 +277,15 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
           <Link href="/play" className="text-sm text-ccb-muted hover:text-ccb-primary flex items-center gap-1">
             <ArrowLeft className="w-4 h-4" /> Back
           </Link>
-          <div className="flex items-center gap-2 text-sm text-ccb-muted">
-            <Eye className="w-4 h-4" />
-            <span>Spectating</span>
+          <div className="flex items-center gap-2">
+            <button onClick={toggleSound} className="text-ccb-muted hover:text-ccb-primary transition-colors p-1">
+              {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+            <div className="flex items-center gap-2 text-sm text-ccb-muted">
+              <Eye className="w-4 h-4" />
+              <span>Spectating</span>
+            </div>
+            <BoardThemePicker onThemeChange={setBoardTheme} />
           </div>
         </div>
         <MoveHistory moves={moveHistory} />
@@ -267,30 +335,9 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         </div>
       )}
 
-      {/* Opponent bar (top) */}
-      <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2 mb-1">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
-            <span className="text-base">{opponentData.symbol}</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium leading-tight">{opponentData.name}</span>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-ccb-muted">{opponentData.rating || "—"}</span>
-              <CapturedPieces pieces={opponentData.captured} advantage={opponentData.advantage} perspective="top" />
-            </div>
-          </div>
-        </div>
-        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-lg font-bold transition-colors ${
-          opponentData.isActive ? "bg-ccb-primary/15 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
-        }`}>
-          <Clock className="w-4 h-4" />
-          {opponentData.clock}
-        </div>
-      </div>
+      {renderPlayerBar(opponentData)}
 
-      {/* Chessboard */}
-      <div className="w-full max-w-[600px] aspect-square mx-auto">
+      <div className="w-full max-w-[600px] aspect-square mx-auto mt-1">
         <Chessboard options={{
           position: fen,
           boardOrientation: isWhite ? "white" : "black",
@@ -300,33 +347,13 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
           },
           allowDragging: myTurn && !gameEnded,
           squareStyles: squareStyles,
-          darkSquareStyle: { backgroundColor: "#312e81" },
-          lightSquareStyle: { backgroundColor: "#e0e7ff" },
+          darkSquareStyle: { backgroundColor: boardTheme.dark },
+          lightSquareStyle: { backgroundColor: boardTheme.light },
           boardStyle: { borderRadius: "8px", overflow: "hidden" },
         }} />
       </div>
 
-      {/* My bar (bottom) */}
-      <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2 mt-1">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
-            <span className="text-base">{playerData.symbol}</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium leading-tight">{playerData.name}</span>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-ccb-muted">{playerData.rating || "—"}</span>
-              <CapturedPieces pieces={playerData.captured} advantage={playerData.advantage} perspective="bottom" />
-            </div>
-          </div>
-        </div>
-        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-lg font-bold transition-colors ${
-          playerData.isActive ? "bg-ccb-primary/15 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
-        }`}>
-          <Clock className="w-4 h-4" />
-          {playerData.clock}
-        </div>
-      </div>
+      {renderPlayerBar(playerData)}
 
       {/* Controls */}
       {!gameEnded && (
@@ -357,6 +384,14 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         <Link href="/play" className="text-sm text-ccb-muted hover:text-ccb-primary flex items-center gap-1">
           <ArrowLeft className="w-4 h-4" /> Back
         </Link>
+        <div className="flex items-center gap-2">
+          <button onClick={toggleSound} className="text-ccb-muted hover:text-ccb-primary transition-colors p-1">
+            {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
+          <BoardThemePicker onThemeChange={setBoardTheme} />
+        </div>
+      </div>
+      <div className="card flex items-center justify-between">
         <div className="text-xs text-ccb-muted">
           {game.time_control} · {game.rated ? "Ranked" : "Casual"}
         </div>
@@ -374,6 +409,12 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         <div className="w-full lg:w-[600px] shrink-0">{board}</div>
         <div className="w-full lg:w-[280px] shrink-0">{sidebar}</div>
       </div>
+      <PromotionDialog
+        visible={!!pendingPromotion}
+        color={isWhite ? "white" : "black"}
+        onSelect={handlePromotionSelect}
+        onCancel={() => setPendingPromotion(null)}
+      />
       <VictoryOverlay
         visible={gameEnded}
         outcome={(game.winner === null ? "draw" : game.winner === (isWhite ? "white" : "black") ? "win" : "loss") as GameOutcome}

@@ -3,13 +3,17 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
-import { Clock, Flag, ArrowLeft, Bot, Home } from "lucide-react";
+import { Clock, Flag, ArrowLeft, Bot, Volume2, VolumeX } from "lucide-react";
 import Link from "next/link";
 import { getBestMove, type AIDifficulty } from "@/lib/game/chess-ai";
 import { getCapturedPieces, getCheckSquare } from "@/lib/game/board-helpers";
+import { playSound, detectMoveSound, setSoundEnabled, isSoundEnabled } from "@/lib/game/sound";
+import { getStoredBoardTheme, type BoardTheme } from "@/lib/game/board-themes";
 import MoveHistory from "./move-history";
 import CapturedPieces from "./captured-pieces";
 import VictoryOverlay, { type GameOutcome } from "./victory-overlay";
+import PromotionDialog from "./promotion-dialog";
+import BoardThemePicker from "./board-theme-picker";
 
 interface ComputerGameProps {
   difficulty: AIDifficulty;
@@ -54,7 +58,11 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   const [lastMoveAt, setLastMoveAt] = useState(Date.now());
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
+  const [boardTheme, setBoardTheme] = useState<BoardTheme>(getStoredBoardTheme());
+  const [pendingPromotion, setPendingPromotion] = useState<{ from: string; to: string } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const soundPlayedForEnd = useRef(false);
 
   const isPlayerWhite = playerColor === "white";
   const isPlayerTurn = (isPlayerWhite && turn === "white") || (!isPlayerWhite && turn === "black");
@@ -68,12 +76,8 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   const squareStyles = useMemo(() => {
     const styles: Record<string, React.CSSProperties> = {};
     if (lastMove) {
-      styles[lastMove.from] = {
-        background: "radial-gradient(circle, rgba(139,92,246,0.35) 70%, transparent 72%)",
-      };
-      styles[lastMove.to] = {
-        background: "radial-gradient(circle, rgba(139,92,246,0.35) 70%, transparent 72%)",
-      };
+      styles[lastMove.from] = { background: "radial-gradient(circle, rgba(139,92,246,0.35) 70%, transparent 72%)" };
+      styles[lastMove.to] = { background: "radial-gradient(circle, rgba(139,92,246,0.35) 70%, transparent 72%)" };
     }
     if (checkSquare) {
       styles[checkSquare] = {
@@ -104,11 +108,27 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [turn, lastMoveAt, gameEnded, whiteClock, blackClock]);
 
-  // Apply a move
+  // Play game-over sound when game ends
+  useEffect(() => {
+    if (gameEnded && !soundPlayedForEnd.current) {
+      soundPlayedForEnd.current = true;
+      playSound("gameEnd");
+    }
+  }, [gameEnded]);
+
+  // Apply a move with sound
   const applyMove = useCallback((from: string, to: string, promotion: string = "q") => {
     try {
       const result = chessRef.current.move({ from, to, promotion });
       if (result === null) return false;
+
+      // Play sound based on move type
+      const soundType = detectMoveSound(result);
+      playSound(soundType);
+      // Check sound if in check after the move
+      if (chessRef.current.inCheck() && !chessRef.current.isCheckmate()) {
+        setTimeout(() => playSound("check"), 100);
+      }
 
       const now = Date.now();
       const elapsed = now - lastMoveAt;
@@ -157,11 +177,33 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     return () => clearTimeout(timeout);
   }, [turn, gameEnded, isPlayerTurn, fen, difficulty, applyMove]);
 
-  // Player drop handler
+  // Check if a move is a pawn promotion
+  const isPromotionMove = useCallback((from: string, to: string): boolean => {
+    const game = new Chess(fen);
+    const piece = game.get(from as any);
+    if (!piece || piece.type !== "p") return false;
+    const rank = to[1];
+    return (piece.color === "w" && rank === "8") || (piece.color === "b" && rank === "1");
+  }, [fen]);
+
+  // Player drop handler — intercept promotions
   const onDrop = useCallback((sourceSquare: string, targetSquare: string): boolean => {
     if (!isPlayerTurn || gameEnded) return false;
+    // Check if this is a promotion move
+    if (isPromotionMove(sourceSquare, targetSquare)) {
+      setPendingPromotion({ from: sourceSquare, to: targetSquare });
+      return false; // don't apply yet — wait for user selection
+    }
     return applyMove(sourceSquare, targetSquare, "q");
-  }, [isPlayerTurn, gameEnded, applyMove]);
+  }, [isPlayerTurn, gameEnded, isPromotionMove, applyMove]);
+
+  // Handle promotion selection
+  const handlePromotionSelect = useCallback((piece: "q" | "r" | "b" | "n") => {
+    if (pendingPromotion) {
+      applyMove(pendingPromotion.from, pendingPromotion.to, piece);
+    }
+    setPendingPromotion(null);
+  }, [pendingPromotion, applyMove]);
 
   const handleResign = () => {
     setStatus("resign");
@@ -181,6 +223,14 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     setWhiteClock(initialMinutes * 60 * 1000);
     setBlackClock(initialMinutes * 60 * 1000);
     setLastMoveAt(Date.now());
+    soundPlayedForEnd.current = false;
+    playSound("gameStart");
+  };
+
+  const toggleSound = () => {
+    const newVal = !soundOn;
+    setSoundOn(newVal);
+    setSoundEnabled(newVal);
   };
 
   const getLiveClock = (player: "white" | "black") => {
@@ -204,6 +254,11 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
       return () => clearTimeout(timeout);
     }
   }, [isPlayerWhite, turn, status, moveCount, difficulty, applyMove]);
+
+  // Play game start sound on mount
+  useEffect(() => {
+    playSound("gameStart");
+  }, []);
 
   const opponentData = isPlayerWhite
     ? { name: DIFFICULTY_LABELS[difficulty], color: "black", symbol: "♚", captured: captured.black, advantage: -captured.advantage, clock: getLiveClock("black"), isActive: turn === "black" && !gameEnded }
@@ -245,8 +300,8 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
           },
           allowDragging: isPlayerTurn && !gameEnded,
           squareStyles: squareStyles,
-          darkSquareStyle: { backgroundColor: "#312e81" },
-          lightSquareStyle: { backgroundColor: "#e0e7ff" },
+          darkSquareStyle: { backgroundColor: boardTheme.dark },
+          lightSquareStyle: { backgroundColor: boardTheme.light },
           boardStyle: { borderRadius: "8px", overflow: "hidden" },
         }} />
       </div>
@@ -295,17 +350,23 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
 
   const sidebar = (
     <div className="flex flex-col gap-3">
-      {/* Status header */}
+      {/* Status header with controls */}
       <div className="card flex items-center justify-between">
+        <Link href="/play" className="text-sm text-ccb-muted hover:text-ccb-primary flex items-center gap-1">
+          <ArrowLeft className="w-4 h-4" /> Back
+        </Link>
         <div className="flex items-center gap-2">
-          <Link href="/play" className="text-sm text-ccb-muted hover:text-ccb-primary flex items-center gap-1">
-            <ArrowLeft className="w-4 h-4" /> Back
-          </Link>
+          <button onClick={toggleSound} className="text-ccb-muted hover:text-ccb-primary transition-colors p-1" title={soundOn ? "Mute" : "Unmute"}>
+            {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
+          <BoardThemePicker onThemeChange={setBoardTheme} />
         </div>
-        <div className="flex items-center gap-2 text-sm text-ccb-muted">
-          <Bot className="w-4 h-4" />
-          <span>{aiThinking ? "Thinking..." : DIFFICULTY_LABELS[difficulty]}</span>
-        </div>
+      </div>
+
+      {/* AI status */}
+      <div className="card flex items-center gap-2">
+        <Bot className="w-4 h-4 text-ccb-primary" />
+        <span className="text-sm text-ccb-muted">{aiThinking ? "Thinking..." : DIFFICULTY_LABELS[difficulty]}</span>
       </div>
 
       {/* Move history */}
@@ -325,6 +386,13 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
         <div className="w-full lg:w-[600px] lg:max-w-[600px] shrink-0">{board}</div>
         <div className="w-full lg:w-[280px] shrink-0">{sidebar}</div>
       </div>
+
+      <PromotionDialog
+        visible={!!pendingPromotion}
+        color={playerColor}
+        onSelect={handlePromotionSelect}
+        onCancel={() => setPendingPromotion(null)}
+      />
 
       <VictoryOverlay
         visible={gameEnded}
