@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Chess } from "chess.js";
+import { settleBattle } from "@/lib/battles/settle";
 
 export async function POST(req: NextRequest) {
   try {
@@ -109,15 +110,7 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (battle) {
-        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/battles/settle`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            battleId: battle.id,
-            winnerId: null, // null = draw -> triggers armageddon
-            result: "draw",
-          }),
-        }).catch((e) => console.error("Battle settlement failed:", e));
+        settleBattle(battle.id, null, "draw").catch((e) => console.error("Battle settlement failed:", e));
       }
 
       return NextResponse.json({ success: true, status: "draw" });

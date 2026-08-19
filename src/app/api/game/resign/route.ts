@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { awardBerries } from "@/lib/berry/award";
+import { settleBattle } from "@/lib/battles/settle";
 
 export async function POST(req: NextRequest) {
   try {
@@ -129,15 +130,7 @@ export async function POST(req: NextRequest) {
         ? (isArmageddon ? battle.black_player_id : battle.white_player_id)
         : (isArmageddon ? battle.white_player_id : battle.black_player_id);
 
-      await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/battles/settle`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          battleId: battle.id,
-          winnerId: battleWinnerId,
-          result: "resign",
-        }),
-      }).catch((e) => console.error("Battle settlement failed:", e));
+      settleBattle(battle.id, battleWinnerId, "resign").catch((e) => console.error("Battle settlement failed:", e));
     }
 
     return NextResponse.json({ status: "resigned", winner, berries });

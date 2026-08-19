@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { validateAndApplyMove } from "@/lib/game/chess-engine";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { awardBerries } from "@/lib/berry/award";
+import { settleBattle } from "@/lib/battles/settle";
 
 export async function POST(req: NextRequest) {
   try {
@@ -205,15 +206,7 @@ export async function POST(req: NextRequest) {
         }
         // result.winner null = draw -> battleWinnerId stays null -> triggers armageddon
 
-        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/battles/settle`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            battleId: battle.id,
-            winnerId: battleWinnerId,
-            result: result.status || "draw",
-          }),
-        }).catch((e) => console.error("Battle settlement failed:", e));
+        settleBattle(battle.id, battleWinnerId, result.status || "draw").catch((e) => console.error("Battle settlement failed:", e));
       }
     }
 

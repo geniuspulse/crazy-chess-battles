@@ -4,6 +4,10 @@ import { DEFAULT_CONFIG } from "@/lib/battles/battle-helpers";
 /**
  * Try to find a match for the player in the queue.
  * Matches by same stake + compatible rating.
+ *
+ * Race condition fix: Uses an atomic conditional UPDATE to claim the opponent's
+ * queue entry (status='waiting' -> status='matched'), preventing two players
+ * from matching the same opponent simultaneously.
  */
 export async function tryMatch(
   admin: ReturnType<typeof createAdminClient>,
@@ -36,60 +40,81 @@ export async function tryMatch(
     Math.abs(a.rating - playerRating) - Math.abs(b.rating - playerRating)
   );
 
-  const opponent = eligible[0];
+  // Try to atomically claim each eligible opponent (prevents race condition)
+  for (const opponent of eligible) {
+    // Atomic claim: only update if still 'waiting' (prevents double-matching)
+    const { data: claimed, error: claimErr } = await admin
+      .from("battle_queue")
+      .update({ status: "matched", matched_at: new Date().toISOString() })
+      .eq("id", opponent.id)
+      .eq("status", "waiting")
+      .select("id")
+      .single();
 
-  // Create the battle
-  const pot = stakeCents * 2;
-  const fee = Math.round(pot * (config.platform_fee_pct / 100));
-  const payout = pot - fee;
+    // If we couldn't claim this opponent (already matched by someone else), try next
+    if (claimErr || !claimed) continue;
 
-  const { data: battle, error: battleErr } = await admin
-    .from("battles")
-    .insert({
-      white_player_id: playerId,
-      black_player_id: opponent.player_id,
-      stake_cents: stakeCents,
-      pot_cents: pot,
-      platform_fee_cents: fee,
-      winner_payout_cents: payout,
-      status: "pending",
-      white_rating: playerRating,
-      black_rating: opponent.rating,
-    })
-    .select()
-    .single();
+    // Successfully claimed — create the battle
+    const pot = stakeCents * 2;
+    const fee = Math.round(pot * (config.platform_fee_pct / 100));
+    const payout = pot - fee;
 
-  if (battleErr || !battle) {
-    console.error("Battle creation failed:", battleErr);
-    return { matched: false };
-  }
+    const { data: battle, error: battleErr } = await admin
+      .from("battles")
+      .insert({
+        white_player_id: playerId,
+        black_player_id: opponent.player_id,
+        stake_cents: stakeCents,
+        pot_cents: pot,
+        platform_fee_cents: fee,
+        winner_payout_cents: payout,
+        status: "pending",
+        white_rating: playerRating,
+        black_rating: opponent.rating,
+      })
+      .select()
+      .single();
 
-  // Record escrow for both players
-  await admin.from("battle_escrow").insert([
-    { battle_id: battle.id, player_id: playerId, amount_cents: stakeCents, status: "locked" },
-    { battle_id: battle.id, player_id: opponent.player_id, amount_cents: stakeCents, status: "locked" },
-  ]);
+    if (battleErr || !battle) {
+      console.error("Battle creation failed:", battleErr);
+      // Release the opponent's queue entry back to waiting
+      await admin
+        .from("battle_queue")
+        .update({ status: "waiting", matched_at: null })
+        .eq("id", opponent.id);
+      return { matched: false };
+    }
 
-  // Update opponent's queue entry
-  await admin
-    .from("battle_queue")
-    .update({ status: "matched", battle_id: battle.id, matched_at: new Date().toISOString() })
-    .eq("id", opponent.id);
-
-  // Find and update the player's own queue entry
-  const { data: playerQueue } = await admin
-    .from("battle_queue")
-    .select("id")
-    .eq("player_id", playerId)
-    .eq("status", "waiting")
-    .limit(1);
-
-  if (playerQueue && playerQueue[0]) {
+    // Link the battle to the opponent's queue entry
     await admin
       .from("battle_queue")
-      .update({ status: "matched", battle_id: battle.id, matched_at: new Date().toISOString() })
-      .eq("id", playerQueue[0].id);
+      .update({ battle_id: battle.id })
+      .eq("id", opponent.id);
+
+    // Record escrow for both players
+    await admin.from("battle_escrow").insert([
+      { battle_id: battle.id, player_id: playerId, amount_cents: stakeCents, status: "locked" },
+      { battle_id: battle.id, player_id: opponent.player_id, amount_cents: stakeCents, status: "locked" },
+    ]);
+
+    // Find and update the player's own queue entry
+    const { data: playerQueue } = await admin
+      .from("battle_queue")
+      .select("id")
+      .eq("player_id", playerId)
+      .eq("status", "waiting")
+      .limit(1);
+
+    if (playerQueue && playerQueue[0]) {
+      await admin
+        .from("battle_queue")
+        .update({ status: "matched", battle_id: battle.id, matched_at: new Date().toISOString() })
+        .eq("id", playerQueue[0].id);
+    }
+
+    return { matched: true, battleId: battle.id };
   }
 
-  return { matched: true, battleId: battle.id };
+  // All eligible opponents were already claimed by other players
+  return { matched: false };
 }
