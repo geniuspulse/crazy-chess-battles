@@ -739,7 +739,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         outcome={(game.winner === null ? "draw" : game.winner === (isWhite ? "white" : "black") ? "win" : "loss") as GameOutcome}
         reasonLabel={STATUS_LABELS[game.status] || game.status}
         ratingChange={myRatingChange}
-        berriesAwarded={game.winner && game.winner === (isWhite ? "white" : "black") ? (game.rated ? 10 : 5) : 0}
+        berriesAwarded={game.winner && game.winner === (isWhite ? "white" : "black") ? (game.rated ? 10 : 15) : 0}
         moveCount={game.move_count}
         subtitle={`${game.time_control} · ${game.rated ? "Ranked" : "Casual"}`}
         lobbyHref="/play"

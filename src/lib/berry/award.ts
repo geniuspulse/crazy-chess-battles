@@ -47,7 +47,7 @@ export async function awardBerries(gameId: string, winnerId: string): Promise<nu
 
     if (!config || !config.enabled) return 0;
 
-    const berries = game.rated ? config.berries_per_win : Math.floor(config.berries_per_win / 2);
+    const berries = game.rated ? config.berries_per_win : 15;
 
     // Credit berries
     await admin.rpc("credit_berries", {
