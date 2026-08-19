@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Swords, Trophy, TrendingUp, User, Wallet, Shield, Coins } from "lucide-react";
+import { Home, Swords, Trophy, TrendingUp, User, Wallet, Shield, Coins, Cherry } from "lucide-react";
 
 interface Profile {
   username: string | null;
@@ -16,7 +16,6 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
   const pathname = usePathname();
   const isGameRoute = pathname.startsWith("/game/") || pathname.startsWith("/play/computer");
 
-  // 5 links — History accessible from dashboard, Battles replaces Ranks on mobile
   const navItems = [
     { href: "/dashboard", label: "Home", icon: Home },
     { href: "/play", label: "Play", icon: Swords },
@@ -25,12 +24,12 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
     { href: "/wallet", label: "Wallet", icon: Wallet },
   ];
 
-  // Desktop nav includes all links + History + Admin
   const desktopItems = [
     { href: "/dashboard", label: "Home", icon: Home },
     { href: "/play", label: "Play", icon: Swords },
     { href: "/battles", label: "Battles", icon: Coins },
     { href: "/tournaments", label: "Tournos", icon: Trophy },
+    { href: "/berry-market", label: "Berry Market", icon: Cherry },
     { href: "/leaderboard", label: "Ranks", icon: TrendingUp },
     { href: "/history", label: "History", icon: TrendingUp },
     { href: "/wallet", label: "Wallet", icon: Wallet },
@@ -53,7 +52,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
 
   return (
     <>
-      {/* Desktop nav — full nav bar, hidden on mobile */}
+      {/* Desktop nav */}
       <nav className="hidden sm:block border-b border-ccb-border bg-ccb-surface sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between h-16">
           <div className="flex items-center gap-8">
@@ -86,6 +85,10 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
           </div>
 
           <div className="flex items-center gap-3">
+            <Link href="/berry-market" className="flex items-center gap-1.5 text-sm">
+              <Cherry className="w-4 h-4 text-red-500" />
+              <span className="font-bold">CCB Market</span>
+            </Link>
             <div className="flex items-center gap-2">
               <span className={`text-sm font-medium ${tier.color}`}>{tier.label}</span>
               <span className="text-sm font-bold">{profile?.rating ?? "—"}</span>
@@ -103,7 +106,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
         </div>
       </nav>
 
-      {/* Mobile header — compact */}
+      {/* Mobile header */}
       {!isGameRoute && (
       <header className="sm:hidden sticky top-0 z-50 border-b border-ccb-border bg-ccb-dark">
         <div className="flex items-center justify-between px-4 h-12">
@@ -114,14 +117,15 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
             <span className="font-bold text-sm">CCB</span>
           </Link>
           <div className="flex items-center gap-3">
+            <Link href="/berry-market" className="flex items-center gap-1">
+              <Cherry className="w-4 h-4 text-red-500" />
+              <span className="text-xs font-bold">Market</span>
+            </Link>
             <div className="flex items-center gap-1.5">
               <span className={`text-xs font-medium ${tier.color}`}>{tier.label}</span>
               <span className="text-xs font-bold">{profile?.rating ?? "—"}</span>
             </div>
-            <Link
-              href="/settings"
-              className="flex items-center gap-2 text-ccb-muted"
-            >
+            <Link href="/settings" className="flex items-center gap-2 text-ccb-muted">
               <div className="w-7 h-7 rounded-full bg-ccb-surface border border-ccb-border flex items-center justify-center">
                 <User className="w-3.5 h-3.5" />
               </div>
@@ -131,7 +135,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
       </header>
       )}
 
-      {/* Mobile bottom nav — 5 links, tight, active tab indicator */}
+      {/* Mobile bottom nav */}
       {!isGameRoute && (
       <nav
         className="fixed bottom-0 left-0 right-0 z-[100] border-t border-gray-200 bg-white sm:hidden"
@@ -147,7 +151,6 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
                 href={item.href}
                 className="flex-1 flex flex-col items-center justify-center gap-0.5 relative"
               >
-                {/* Active indicator bar */}
                 {isActive && (
                   <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-ccb-primary" />
                 )}

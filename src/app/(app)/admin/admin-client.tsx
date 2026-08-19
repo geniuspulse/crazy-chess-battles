@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   LayoutDashboard, Users, ArrowDownUp, Trophy, Loader2, Check, X, Coins,
-  TrendingUp, Wallet, AlertCircle, ChevronRight
+  TrendingUp, Wallet, AlertCircle, ChevronRight, Cherry
 } from "lucide-react";
 
 interface Withdrawal {
@@ -45,7 +45,7 @@ interface UserInfo {
   created_at: string;
 }
 
-type Tab = "overview" | "withdrawals" | "users" | "battles";
+type Tab = "overview" | "withdrawals" | "users" | "battles" | "berry";
 
 export default function AdminDashboard({ adminName }: { adminName: string }) {
   const [tab, setTab] = useState<Tab>("overview");
@@ -57,6 +57,8 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
   const [filter, setFilter] = useState("pending");
   const [battleStats, setBattleStats] = useState<any>(null);
   const [battleConfig, setBattleConfig] = useState<any>(null);
+  const [berryConfig, setBerryConfig] = useState<any>(null);
+  const [berrySaving, setBerrySaving] = useState(false);
 
   const fetchStats = useCallback(async () => {
     const res = await fetch("/api/admin/stats");
@@ -69,6 +71,11 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
     const data = await res.json();
     setWithdrawals(data.withdrawals || []);
   }, [filter]);
+
+  const fetchBerryConfig = useCallback(async () => {
+    const res = await fetch("/api/admin/berry-config");
+    if (res.ok) setBerryConfig(await res.json());
+  }, []);
 
   const fetchBattleStats = useCallback(async () => {
     const [statsRes, configRes] = await Promise.all([
@@ -92,6 +99,7 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
       if (tab === "withdrawals") await fetchWithdrawals();
       if (tab === "users") await fetchUsers();
       if (tab === "battles") await fetchBattleStats();
+      if (tab === "berry") await fetchBerryConfig();
       setLoading(false);
     };
     load();
@@ -139,6 +147,7 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
     { id: "withdrawals" as Tab, label: "Withdrawals", icon: ArrowDownUp, badge: stats?.pendingWithdrawals },
     { id: "users" as Tab, label: "Users", icon: Users },
     { id: "battles" as Tab, label: "Battles", icon: Coins },
+    { id: "berry" as Tab, label: "Berry", icon: Cherry },
   ];
 
   return (
@@ -400,6 +409,99 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* BERRY CONFIG */}
+          {tab === "berry" && berryConfig && (
+            <div className="space-y-4">
+              <div className="card space-y-4">
+                <div className="flex items-center gap-2">
+                  <Cherry className="w-5 h-5 text-red-500" />
+                  <h3 className="font-medium">CRAZYCHESSBERRY Settings</h3>
+                </div>
+
+                <div>
+                  <label className="text-sm text-ccb-muted mb-1 block">Berries per Win</label>
+                  <input
+                    type="number"
+                    value={berryConfig.berries_per_win ?? 10}
+                    onChange={(e) => setBerryConfig({ ...berryConfig, berries_per_win: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 rounded-lg bg-ccb-surface border border-ccb-border text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm text-ccb-muted mb-1 block">Berries per Draw</label>
+                  <input
+                    type="number"
+                    value={berryConfig.berries_per_draw ?? 2}
+                    onChange={(e) => setBerryConfig({ ...berryConfig, berries_per_draw: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 rounded-lg bg-ccb-surface border border-ccb-border text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm text-ccb-muted mb-1 block">Berry Value (MWK cents per 100 berries)</label>
+                  <input
+                    type="number"
+                    value={berryConfig.berry_value_cents ?? 1000}
+                    onChange={(e) => setBerryConfig({ ...berryConfig, berry_value_cents: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 rounded-lg bg-ccb-surface border border-ccb-border text-sm"
+                  />
+                  <p className="text-xs text-ccb-muted mt-1">100 berries = MWK {(berryConfig.berry_value_cents ?? 1000) / 100}</p>
+                </div>
+
+                <div>
+                  <label className="text-sm text-ccb-muted mb-1 block">Minimum Redemption (berries)</label>
+                  <input
+                    type="number"
+                    value={berryConfig.min_redemption ?? 1000}
+                    onChange={(e) => setBerryConfig({ ...berryConfig, min_redemption: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 rounded-lg bg-ccb-surface border border-ccb-border text-sm"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={berryConfig.enabled ?? true}
+                    onChange={(e) => setBerryConfig({ ...berryConfig, enabled: e.target.checked })}
+                    className="w-4 h-4 rounded"
+                  />
+                  <label className="text-sm">Berry earning enabled</label>
+                </div>
+
+                <button
+                  onClick={async () => {
+                    setBerrySaving(true);
+                    try {
+                      const res = await fetch("/api/admin/berry-config", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(berryConfig),
+                      });
+                      if (res.ok) {
+                        const updated = await res.json();
+                        setBerryConfig(updated);
+                        alert("Berry config saved!");
+                      } else {
+                        const data = await res.json();
+                        alert(data.error || "Failed to save");
+                      }
+                    } catch (e) {
+                      alert("Failed to save");
+                    } finally {
+                      setBerrySaving(false);
+                    }
+                  }}
+                  disabled={berrySaving}
+                  className="w-full py-2.5 rounded-lg bg-ccb-primary text-white text-sm font-medium hover:bg-ccb-primary/90 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {berrySaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  Save Berry Config
+                </button>
+              </div>
             </div>
           )}
 

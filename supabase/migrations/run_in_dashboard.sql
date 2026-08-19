@@ -1,5 +1,5 @@
 -- ============================================================
--- Crazy Chess Battles — Full Migration (includes Berry System)
+-- Crazy Chess Battles — Full Migration (includes Berry System + P2P Market)
 -- Run this in Supabase Dashboard → SQL Editor → New Query
 -- Safe to run multiple times — everything uses IF NOT EXISTS
 -- ============================================================
@@ -185,10 +185,9 @@ CREATE POLICY "Players can send game chat" ON game_chat FOR INSERT TO authentica
 CREATE INDEX IF NOT EXISTS idx_game_chat_game ON game_chat(game_id, created_at);
 
 -- ============================================================
--- 6. Berry System — earn berries from quick match wins, redeem for cash
+-- 6. Berry System — CRAZYCHESSBERRY (CCB)
 -- ============================================================
 
--- Add berry_balance column to profiles
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -199,7 +198,6 @@ BEGIN
   END IF;
 END $$;
 
--- Berry transactions log
 CREATE TABLE IF NOT EXISTS berry_transactions (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -210,18 +208,16 @@ CREATE TABLE IF NOT EXISTS berry_transactions (
   description     TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 ALTER TABLE berry_transactions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users read own berry transactions" ON berry_transactions FOR SELECT TO authenticated USING (user_id = auth.uid());
 CREATE INDEX IF NOT EXISTS idx_berry_tx_user ON berry_transactions(user_id, created_at DESC);
 
--- Berry config (admin-controlled)
 CREATE TABLE IF NOT EXISTS berry_config (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   berries_per_win   INT NOT NULL DEFAULT 10,
   berries_per_draw  INT NOT NULL DEFAULT 2,
   berry_value_cents INT NOT NULL DEFAULT 1000,
-  min_redemption    INT NOT NULL DEFAULT 50,
+  min_redemption    INT NOT NULL DEFAULT 1000,
   enabled           BOOLEAN NOT NULL DEFAULT true,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -229,8 +225,11 @@ CREATE TABLE IF NOT EXISTS berry_config (
 INSERT INTO berry_config (id) VALUES (gen_random_uuid()) ON CONFLICT DO NOTHING;
 ALTER TABLE berry_config ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Anyone can read berry_config" ON berry_config FOR SELECT TO authenticated USING (true);
+-- Admin update
+CREATE POLICY "Admins update berry_config" ON berry_config FOR UPDATE TO authenticated USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
+);
 
--- Credit berries function
 CREATE OR REPLACE FUNCTION public.credit_berries(p_user_id UUID, p_amount INT, p_game_id UUID DEFAULT NULL, p_description TEXT DEFAULT NULL)
 RETURNS VOID AS $$
 DECLARE
@@ -238,27 +237,21 @@ DECLARE
 BEGIN
   UPDATE profiles SET berry_balance = berry_balance + p_amount WHERE id = p_user_id
   RETURNING berry_balance INTO new_balance;
-  
   INSERT INTO berry_transactions (user_id, type, amount, balance_after, game_id, description)
   VALUES (p_user_id, 'earned', p_amount, new_balance, p_game_id, p_description);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Debit berries (for redemption)
 CREATE OR REPLACE FUNCTION public.debit_berries(p_user_id UUID, p_amount INT, p_description TEXT DEFAULT NULL)
 RETURNS VOID AS $$
 DECLARE
   new_balance INT;
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM profiles WHERE id = p_user_id AND berry_balance >= p_amount
-  ) THEN
+  IF NOT EXISTS (SELECT 1 FROM profiles WHERE id = p_user_id AND berry_balance >= p_amount) THEN
     RAISE EXCEPTION 'Insufficient berries';
   END IF;
-  
   UPDATE profiles SET berry_balance = berry_balance - p_amount WHERE id = p_user_id
   RETURNING berry_balance INTO new_balance;
-  
   INSERT INTO berry_transactions (user_id, type, amount, balance_after, description)
   VALUES (p_user_id, 'redeemed', -p_amount, new_balance, p_description);
 END;
@@ -266,5 +259,123 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.credit_berries(UUID, INT, UUID, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.debit_berries(UUID, INT, TEXT) TO authenticated;
+
+-- ============================================================
+-- 7. P2P Berry Market — buy/sell CCB between users
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS berry_market_listings (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  seller_id       UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  amount          INT NOT NULL CHECK (amount > 0),
+  price_cents     INT NOT NULL CHECK (price_cents > 0),
+  status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'sold', 'cancelled', 'partial')),
+  filled_amount   INT NOT NULL DEFAULT 0,
+  buyer_id        UUID REFERENCES auth.users(id),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  cancelled_at    TIMESTAMPTZ,
+  completed_at    TIMESTAMPTZ
+);
+ALTER TABLE berry_market_listings ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Anyone can read active listings" ON berry_market_listings FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Users create own listings" ON berry_market_listings FOR INSERT TO authenticated WITH CHECK (seller_id = auth.uid());
+CREATE POLICY "Sellers update own listings" ON berry_market_listings FOR UPDATE TO authenticated USING (seller_id = auth.uid());
+CREATE POLICY "Sellers delete own listings" ON berry_market_listings FOR DELETE TO authenticated USING (seller_id = auth.uid());
+CREATE INDEX IF NOT EXISTS idx_berry_listings_active ON berry_market_listings(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_berry_listings_seller ON berry_market_listings(seller_id, status);
+
+CREATE TABLE IF NOT EXISTS berry_market_trades (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  listing_id      UUID NOT NULL REFERENCES berry_market_listings(id) ON DELETE CASCADE,
+  seller_id       UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  buyer_id        UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  amount          INT NOT NULL CHECK (amount > 0),
+  price_cents     INT NOT NULL CHECK (price_cents > 0),
+  unit_price_cents INT NOT NULL CHECK (unit_price_cents > 0),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE berry_market_trades ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Participants read trades" ON berry_market_trades FOR SELECT TO authenticated USING (seller_id = auth.uid() OR buyer_id = auth.uid());
+CREATE INDEX IF NOT EXISTS idx_berry_trades_buyer ON berry_market_trades(buyer_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_berry_trades_seller ON berry_market_trades(seller_id, created_at DESC);
+
+-- Atomic trade execution function
+CREATE OR REPLACE FUNCTION public.execute_berry_trade(
+  p_listing_id   UUID,
+  p_buyer_id     UUID,
+  p_buy_amount   INT DEFAULT NULL
+)
+RETURNS JSONB AS $$
+DECLARE
+  listing     RECORD;
+  buy_amount  INT;
+  total_cents INT;
+  unit_price  INT;
+  seller_bal  INT;
+  buyer_bal   INT;
+  new_seller_bal INT;
+  new_buyer_bal  INT;
+BEGIN
+  SELECT * INTO listing FROM berry_market_listings
+  WHERE id = p_listing_id AND status = 'active'
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('error', 'Listing not found or not active');
+  END IF;
+  IF listing.seller_id = p_buyer_id THEN
+    RETURN jsonb_build_object('error', 'Cannot buy your own listing');
+  END IF;
+
+  buy_amount := LEAST(COALESCE(p_buy_amount, listing.amount - listing.filled_amount), listing.amount - listing.filled_amount);
+  IF buy_amount <= 0 THEN
+    RETURN jsonb_build_object('error', 'Listing is fully filled');
+  END IF;
+
+  unit_price := listing.price_cents / listing.amount;
+  total_cents := unit_price * buy_amount;
+
+  SELECT wallet_balance_cents INTO buyer_bal FROM profiles WHERE id = p_buyer_id FOR UPDATE;
+  IF buyer_bal < total_cents THEN
+    RETURN jsonb_build_object('error', 'Insufficient wallet balance');
+  END IF;
+
+  SELECT berry_balance INTO seller_bal FROM profiles WHERE id = listing.seller_id FOR UPDATE;
+  IF seller_bal < buy_amount THEN
+    RETURN jsonb_build_object('error', 'Seller has insufficient berries');
+  END IF;
+
+  UPDATE profiles SET wallet_balance_cents = wallet_balance_cents - total_cents WHERE id = p_buyer_id
+  RETURNING wallet_balance_cents INTO new_buyer_bal;
+  UPDATE profiles SET wallet_balance_cents = wallet_balance_cents + total_cents WHERE id = listing.seller_id;
+  UPDATE profiles SET berry_balance = berry_balance - buy_amount WHERE id = listing.seller_id
+  RETURNING berry_balance INTO new_seller_bal;
+  UPDATE profiles SET berry_balance = berry_balance + buy_amount WHERE id = p_buyer_id;
+
+  INSERT INTO berry_transactions (user_id, type, amount, balance_after, description)
+  VALUES (listing.seller_id, 'redeemed', -buy_amount, new_seller_bal,
+    'Sold ' || buy_amount || ' CCB on market for MWK ' || (total_cents / 100));
+  INSERT INTO berry_transactions (user_id, type, amount, balance_after, description)
+  VALUES (p_buyer_id, 'earned', buy_amount,
+    (SELECT berry_balance FROM profiles WHERE id = p_buyer_id),
+    'Bought ' || buy_amount || ' CCB on market for MWK ' || (total_cents / 100));
+
+  INSERT INTO berry_market_trades (listing_id, seller_id, buyer_id, amount, price_cents, unit_price_cents)
+  VALUES (p_listing_id, listing.seller_id, p_buyer_id, buy_amount, total_cents, unit_price);
+
+  IF listing.filled_amount + buy_amount >= listing.amount THEN
+    UPDATE berry_market_listings SET status = 'sold', filled_amount = listing.amount, buyer_id = p_buyer_id, completed_at = now()
+    WHERE id = p_listing_id;
+  ELSE
+    UPDATE berry_market_listings SET filled_amount = filled_amount + buy_amount, status = 'partial'
+    WHERE id = p_listing_id;
+  END IF;
+
+  RETURN jsonb_build_object('success', true, 'amount', buy_amount, 'price_cents', total_cents,
+    'buyer_balance', new_buyer_bal, 'buyer_berries', (SELECT berry_balance FROM profiles WHERE id = p_buyer_id));
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.execute_berry_trade(UUID, UUID, INT) TO authenticated;
 
 -- Done! All tables created.

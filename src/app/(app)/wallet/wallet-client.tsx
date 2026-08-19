@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Wallet, Smartphone, CreditCard, Check, Loader2, ArrowDown, ArrowUp, Clock, Cherry } from "lucide-react";
+import { Wallet, Smartphone, CreditCard, Check, Loader2, ArrowDown, ArrowUp, Clock, Cherry, ExternalLink } from "lucide-react";
+import Link from "next/link";
 
 interface Deposit {
   id: string;
@@ -33,7 +34,7 @@ interface WalletClientProps {
 
 const QUICK_AMOUNTS = [500, 1000, 2000, 5000, 10000, 25000];
 const BERRY_VALUE_CENTS = 1000; // 100 berries = MWK 1,000
-const MIN_REDEEM_BERRIES = 50;
+const MIN_REDEEM_BERRIES = 1000;
 
 const OPERATORS = [
   { id: "27494cb5-ba9e-437f-a114-4e7a7686bcca", name: "TNM Mpamba", color: "bg-blue-500" },
@@ -56,7 +57,7 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
   const [pendingChargeId, setPendingChargeId] = useState<string | null>(null);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [withdrawLoading, setWithdrawLoading] = useState(false);
-  const [redeemAmount, setRedeemAmount] = useState(100);
+  const [redeemAmount, setRedeemAmount] = useState(1000);
   const [redeemLoading, setRedeemLoading] = useState(false);
   const [berries, setBerries] = useState(berryBalance);
 
@@ -347,7 +348,7 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
             </p>
             <p className="text-3xl font-bold mt-1">{berries.toLocaleString()} 🍒</p>
             <p className="text-xs text-ccb-muted mt-1">
-              Win quick matches to earn berries • 100 berries = MWK 1,000
+              Win quick matches to earn CCB • Redeem at 1000+ or sell on the market
             </p>
           </div>
           <div className="w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center">
@@ -385,10 +386,24 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
         )}
 
         {berries < MIN_REDEEM_BERRIES && (
-          <p className="text-xs text-ccb-muted mt-2 pt-2 border-t border-red-500/10">
-            Win {MIN_REDEEM_BERRIES - berries} more berries to unlock redemption ({MIN_REDEEM_BERRIES} minimum)
-          </p>
+          <div className="text-xs text-ccb-muted mt-2 pt-2 border-t border-red-500/10">
+            <p>Win {MIN_REDEEM_BERRIES - berries} more CCB to unlock cash redemption</p>
+          </div>
         )}
+
+        {/* Always show market link */}
+        <div className="mt-3 pt-3 border-t border-red-500/10">
+          <Link
+            href="/berry-market"
+            className="flex items-center justify-between text-sm text-red-500 font-medium hover:text-red-600"
+          >
+            <span className="flex items-center gap-1">
+              <ExternalLink className="w-3.5 h-3.5" />
+              Sell CCB on Berry Market
+            </span>
+            <span>→</span>
+          </Link>
+        </div>
       </div>
 
       {/* Success message */}
