@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
-import { Clock, Flag, ArrowLeft, Bot, RefreshCw } from "lucide-react";
+import { Clock, Flag, ArrowLeft, Bot } from "lucide-react";
 import Link from "next/link";
 import { getBestMove, type AIDifficulty } from "@/lib/game/chess-ai";
+import VictoryOverlay, { type GameOutcome } from "./victory-overlay";
 
 interface ComputerGameProps {
   difficulty: AIDifficulty;
@@ -18,6 +19,14 @@ const DIFFICULTY_LABELS: Record<AIDifficulty, string> = {
   easy: "Easy Bot",
   medium: "Medium Bot",
   hard: "Hard Bot",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  checkmate: "Checkmate",
+  stalemate: "Stalemate",
+  draw: "Draw",
+  resign: "Resignation",
+  timeout: "Time out",
 };
 
 function formatClock(ms: number | null): string {
@@ -254,23 +263,15 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
         </div>
       )}
 
-      {/* Game over banner */}
-      {gameEnded && (
-        <div className="card max-w-[600px] mx-auto text-center">
-          <div className="text-4xl mb-2">
-            {winner === playerColor ? "🎉" : winner === null ? "🤝" : "😞"}
-          </div>
-          <h3 className="text-xl font-bold capitalize mb-1">
-            {status === "draw" ? "Draw" : status === "checkmate" ? "Checkmate" : status === "resign" ? "Resignation" : status === "timeout" ? "Time out" : status}
-          </h3>
-          <p className="text-sm text-ccb-muted mb-4">
-            {winner === playerColor ? "You won!" : winner === null ? "Game drawn" : "You lost"}
-          </p>
-          <button onClick={handleNewGame} className="btn-primary inline-flex items-center gap-2">
-            <RefreshCw className="w-4 h-4" /> New Game
-          </button>
-        </div>
-      )}
+      {/* Victory / defeat / draw flyover */}
+      <VictoryOverlay
+        visible={gameEnded}
+        outcome={(winner === null ? "draw" : winner === playerColor ? "win" : "loss") as GameOutcome}
+        reasonLabel={STATUS_LABELS[status] || status}
+        moveCount={moveCount}
+        subtitle={`${DIFFICULTY_LABELS[difficulty]} · vs Computer`}
+        onNewGame={handleNewGame}
+      />
 
       <div className="text-center text-xs text-ccb-muted">
         Move {moveCount} · {DIFFICULTY_LABELS[difficulty]} · vs Computer

@@ -6,6 +6,7 @@ import { Chess } from "chess.js";
 import { useRealtimeGame, type GameState } from "@/hooks/use-realtime-game";
 import { Clock, Flag, Eye, ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import VictoryOverlay, { type GameOutcome } from "./victory-overlay";
 
 interface GameClientProps {
   gameId: string;
@@ -15,6 +16,14 @@ interface GameClientProps {
   whiteName?: string;
   blackName?: string;
 }
+
+const STATUS_LABELS: Record<string, string> = {
+  checkmate: "Checkmate",
+  stalemate: "Stalemate",
+  draw: "Draw",
+  resign: "Resignation",
+  timeout: "Time out",
+};
 
 function formatClock(ms: number | null): string {
   if (ms === null || ms === undefined) return "—";
@@ -163,20 +172,15 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
           </div>
         </div>
 
-        {/* Game over banner */}
-        {gameEnded && (
-          <div className="card max-w-[600px] mx-auto text-center">
-            <div className="text-4xl mb-2">
-              {game.winner === "white" ? "♔" : game.winner === "black" ? "♚" : "🤝"}
-            </div>
-            <h3 className="text-xl font-bold capitalize mb-1">
-              {game.status === "draw" ? "Draw" : game.status === "checkmate" ? "Checkmate" : game.status === "resign" ? "Resignation" : game.status === "timeout" ? "Timeout" : game.status}
-            </h3>
-            <p className="text-sm text-ccb-muted">
-              {game.winner === "white" ? `${whiteName} wins` : game.winner === "black" ? `${blackName} wins` : "Draw"}
-            </p>
-          </div>
-        )}
+        {/* Game over flyover */}
+        <VictoryOverlay
+          visible={gameEnded}
+          outcome={(game.winner === null ? "draw" : "win") as GameOutcome}
+          reasonLabel={STATUS_LABELS[game.status] || game.status}
+          moveCount={game.move_count}
+          subtitle={`${game.winner === "white" ? whiteName : game.winner === "black" ? blackName : "Draw"} · ${game.time_control}`}
+          lobbyHref="/play"
+        />
 
         <div className="text-center text-xs text-ccb-muted">
           Move {game.move_count} · {game.time_control} · {game.rated ? "Ranked" : "Casual"}
@@ -281,29 +285,16 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         </div>
       )}
 
-      {/* Game over banner */}
-      {gameEnded && (
-        <div className="card max-w-[600px] mx-auto text-center">
-          <div className="text-4xl mb-2">
-            {game.winner === (isWhite ? "white" : "black") ? "🎉" : game.winner === null ? "🤝" : "😞"}
-          </div>
-          <h3 className="text-xl font-bold capitalize mb-1">
-            {game.status === "draw" ? "Draw" : game.status === "checkmate" ? "Checkmate" : game.status === "resign" ? "Resignation" : game.status === "timeout" ? "Time out" : game.status}
-          </h3>
-          <p className="text-sm text-ccb-muted mb-4">
-            {game.winner === (isWhite ? "white" : "black")
-              ? "You won!"
-              : game.winner === null
-              ? "Game drawn"
-              : "You lost"}
-          </p>
-          {myRatingChange !== null && myRatingChange !== undefined && (
-            <div className={`text-sm font-bold ${myRatingChange >= 0 ? "text-ccb-success" : "text-ccb-danger"}`}>
-              {myRatingChange >= 0 ? "+" : ""}{myRatingChange} rating
-            </div>
-          )}
-        </div>
-      )}
+      {/* Victory / defeat / draw flyover */}
+      <VictoryOverlay
+        visible={gameEnded}
+        outcome={(game.winner === null ? "draw" : game.winner === (isWhite ? "white" : "black") ? "win" : "loss") as GameOutcome}
+        reasonLabel={STATUS_LABELS[game.status] || game.status}
+        ratingChange={myRatingChange}
+        moveCount={game.move_count}
+        subtitle={`${game.time_control} · ${game.rated ? "Ranked" : "Casual"}`}
+        lobbyHref="/play"
+      />
 
       <div className="text-center text-xs text-ccb-muted">
         Move {game.move_count} · {game.time_control} · {game.rated ? "Ranked" : "Casual"}
