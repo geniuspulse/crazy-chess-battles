@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  LayoutDashboard, Users, ArrowDownUp, Trophy, Loader2, Check, X,
+  LayoutDashboard, Users, ArrowDownUp, Trophy, Loader2, Check, X, Coins,
   TrendingUp, Wallet, AlertCircle, ChevronRight
 } from "lucide-react";
 
@@ -45,7 +45,7 @@ interface UserInfo {
   created_at: string;
 }
 
-type Tab = "overview" | "withdrawals" | "users";
+type Tab = "overview" | "withdrawals" | "users" | "battles";
 
 export default function AdminDashboard({ adminName }: { adminName: string }) {
   const [tab, setTab] = useState<Tab>("overview");
@@ -55,6 +55,8 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [filter, setFilter] = useState("pending");
+  const [battleStats, setBattleStats] = useState<any>(null);
+  const [battleConfig, setBattleConfig] = useState<any>(null);
 
   const fetchStats = useCallback(async () => {
     const res = await fetch("/api/admin/stats");
@@ -68,6 +70,15 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
     setWithdrawals(data.withdrawals || []);
   }, [filter]);
 
+  const fetchBattleStats = useCallback(async () => {
+    const [statsRes, configRes] = await Promise.all([
+      fetch("/api/battles/stats"),
+      fetch("/api/battles/config"),
+    ]);
+    if (statsRes.ok) setBattleStats(await statsRes.json());
+    if (configRes.ok) setBattleConfig(await configRes.json());
+  }, []);
+
   const fetchUsers = useCallback(async () => {
     const res = await fetch("/api/admin/users");
     const data = await res.json();
@@ -80,6 +91,7 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
       await fetchStats();
       if (tab === "withdrawals") await fetchWithdrawals();
       if (tab === "users") await fetchUsers();
+      if (tab === "battles") await fetchBattleStats();
       setLoading(false);
     };
     load();
@@ -126,6 +138,7 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
     { id: "overview" as Tab, label: "Overview", icon: LayoutDashboard },
     { id: "withdrawals" as Tab, label: "Withdrawals", icon: ArrowDownUp, badge: stats?.pendingWithdrawals },
     { id: "users" as Tab, label: "Users", icon: Users },
+    { id: "battles" as Tab, label: "Battles", icon: Coins },
   ];
 
   return (
@@ -308,6 +321,83 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
                       )}
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* BATTLES */}
+          {tab === "battles" && battleStats && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
+                <StatCard icon={Coins} label="Active Battles" value={battleStats.stats.activeBattles || 0} color="text-ccb-primary" />
+                <StatCard icon={Users} label="In Queue" value={battleStats.stats.waitingPlayers || 0} color="text-ccb-accent" />
+                <StatCard icon={Trophy} label="Completed" value={battleStats.stats.completedBattles || 0} color="text-ccb-success" />
+                <StatCard icon={AlertCircle} label="Disputed" value={battleStats.stats.disputedBattles || 0} color="text-ccb-danger" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-4">
+                <StatCard icon={Coins} label="Total Volume" value={formatMWK(battleStats.stats.totalVolume || 0)} color="text-ccb-success" />
+                <StatCard icon={Coins} label="Platform Revenue" value={formatMWK(battleStats.stats.totalRevenue || 0)} color="text-ccb-accent" />
+                <StatCard icon={Wallet} label="Locked Funds" value={formatMWK(battleStats.stats.lockedFunds || 0)} color="text-ccb-danger" />
+              </div>
+
+              {battleConfig && (
+                <div className="card">
+                  <h3 className="font-medium text-sm text-ccb-muted uppercase tracking-wide mb-3">Battle Configuration</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-ccb-muted">Enabled</span>
+                      <span className="font-medium">{battleConfig.enabled ? "Yes" : "No"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-ccb-muted">Platform Fee</span>
+                      <span className="font-medium">{battleConfig.platform_fee_pct}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-ccb-muted">Rating Range</span>
+                      <span className="font-medium">+/- {battleConfig.rating_range}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-ccb-muted">Time Control</span>
+                      <span className="font-medium">{battleConfig.initial_minutes}+{battleConfig.increment_seconds}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-ccb-muted">Armageddon</span>
+                      <span className="font-medium">{battleConfig.armageddon_pct}% time, max {battleConfig.max_armageddon_rounds} rounds</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-ccb-muted">Queue Timeout</span>
+                      <span className="font-medium">{battleConfig.queue_timeout_s}s</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {battleStats.recentBattles && battleStats.recentBattles.length > 0 && (
+                <div className="card">
+                  <h3 className="font-medium text-sm text-ccb-muted uppercase tracking-wide mb-3">Recent Battles</h3>
+                  <div className="space-y-2">
+                    {battleStats.recentBattles.map((b: any) => (
+                      <div key={b.id} className="flex items-center justify-between text-sm py-2 border-b border-ccb-border last:border-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-ccb-muted">{b.white_player?.username || "?"} vs {b.black_player?.username || "?"}</span>
+                          {b.armageddon_round > 0 && (
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-ccb-accent/10 text-ccb-accent">AG{b.armageddon_round}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-medium">{formatMWK(b.stake_cents)}</span>
+                          <span className={"text-xs px-2 py-1 rounded " + (
+                            b.status === "completed" ? "bg-ccb-success/10 text-ccb-success" :
+                            b.status === "playing" || b.status === "draw_armageddon" ? "bg-ccb-accent/10 text-ccb-accent" :
+                            b.status === "disputed" ? "bg-ccb-danger/10 text-ccb-danger" :
+                            "bg-ccb-muted/10 text-ccb-muted"
+                          )}>{b.status}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

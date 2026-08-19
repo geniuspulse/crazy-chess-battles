@@ -177,6 +177,39 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Check if this is a Battle game and settle
+    if (gameEnded) {
+      const { data: battle } = await admin
+        .from("battles")
+        .select("id, status, white_player_id, black_player_id, armageddon_game_id")
+        .or(`game_id.eq.${gameId},armageddon_game_id.eq.${gameId}`)
+        .in("status", ["playing", "draw_armageddon"])
+        .limit(1)
+        .single();
+
+      if (battle) {
+        const isArmageddon = battle.armageddon_game_id === gameId;
+        let battleWinnerId: string | null = null;
+
+        if (result.winner === "white") {
+          battleWinnerId = isArmageddon ? battle.black_player_id : battle.white_player_id;
+        } else if (result.winner === "black") {
+          battleWinnerId = isArmageddon ? battle.white_player_id : battle.black_player_id;
+        }
+        // result.winner null = draw -> battleWinnerId stays null -> triggers armageddon
+
+        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/battles/settle`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            battleId: battle.id,
+            winnerId: battleWinnerId,
+            result: result.status || "draw",
+          }),
+        }).catch((e) => console.error("Battle settlement failed:", e));
+      }
+    }
+
     return NextResponse.json({
       valid: true,
       fen: result.fen,

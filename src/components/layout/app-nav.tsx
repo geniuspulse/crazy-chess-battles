@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Swords, Trophy, TrendingUp, User, Wallet, Shield } from "lucide-react";
+import { Home, Swords, Trophy, TrendingUp, User, Wallet, Shield, Coins } from "lucide-react";
 
 interface Profile {
   username: string | null;
@@ -16,18 +16,22 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
   const pathname = usePathname();
   const isGameRoute = pathname.startsWith("/game/") || pathname.startsWith("/play/computer");
 
-  // 5 links — History accessible from dashboard
+  // 5 links — History accessible from dashboard, Battles replaces Ranks on mobile
   const navItems = [
     { href: "/dashboard", label: "Home", icon: Home },
     { href: "/play", label: "Play", icon: Swords },
+    { href: "/battles", label: "Battles", icon: Coins },
     { href: "/tournaments", label: "Tournos", icon: Trophy },
-    { href: "/leaderboard", label: "Ranks", icon: TrendingUp },
     { href: "/wallet", label: "Wallet", icon: Wallet },
   ];
 
-  // Desktop nav includes History + Admin
+  // Desktop nav includes all links + History + Admin
   const desktopItems = [
-    ...navItems.slice(0, 4),
+    { href: "/dashboard", label: "Home", icon: Home },
+    { href: "/play", label: "Play", icon: Swords },
+    { href: "/battles", label: "Battles", icon: Coins },
+    { href: "/tournaments", label: "Tournos", icon: Trophy },
+    { href: "/leaderboard", label: "Ranks", icon: TrendingUp },
     { href: "/history", label: "History", icon: TrendingUp },
     { href: "/wallet", label: "Wallet", icon: Wallet },
     ...(profile?.is_admin ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
@@ -129,7 +133,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
 
       {/* Mobile bottom nav — 5 links, tight, active tab indicator */}
       {!isGameRoute && (
-      <nav 
+      <nav
         className="fixed bottom-0 left-0 right-0 z-[100] border-t border-gray-200 bg-white sm:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       >

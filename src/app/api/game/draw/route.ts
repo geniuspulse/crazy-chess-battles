@@ -99,6 +99,27 @@ export async function POST(req: NextRequest) {
         }).eq("id", game.black_player_id);
       }
 
+      // Check if this is a Battle game — draw triggers armageddon
+      const { data: battle } = await admin
+        .from("battles")
+        .select("id, status, white_player_id, black_player_id, armageddon_game_id")
+        .or(`game_id.eq.${gameId},armageddon_game_id.eq.${gameId}`)
+        .in("status", ["playing", "draw_armageddon"])
+        .limit(1)
+        .single();
+
+      if (battle) {
+        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/battles/settle`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            battleId: battle.id,
+            winnerId: null, // null = draw -> triggers armageddon
+            result: "draw",
+          }),
+        }).catch((e) => console.error("Battle settlement failed:", e));
+      }
+
       return NextResponse.json({ success: true, status: "draw" });
     }
 

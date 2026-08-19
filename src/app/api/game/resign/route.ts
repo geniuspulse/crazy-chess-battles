@@ -109,6 +109,32 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Check if this is a Battle game and settle
+    const { data: battle } = await admin
+      .from("battles")
+      .select("id, status, white_player_id, black_player_id, armageddon_game_id")
+      .or(`game_id.eq.${gameId},armageddon_game_id.eq.${gameId}`)
+      .in("status", ["playing", "draw_armageddon"])
+      .limit(1)
+      .single();
+
+    if (battle) {
+      const isArmageddon = fullGame?.tournament_id === null && battle.armageddon_game_id === gameId;
+      const battleWinnerId = winner === "white"
+        ? (isArmageddon ? battle.black_player_id : battle.white_player_id)
+        : (isArmageddon ? battle.white_player_id : battle.black_player_id);
+
+      await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/battles/settle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          battleId: battle.id,
+          winnerId: battleWinnerId,
+          result: "resign",
+        }),
+      }).catch((e) => console.error("Battle settlement failed:", e));
+    }
+
     return NextResponse.json({ status: "resigned", winner });
   } catch {
     return NextResponse.json({ error: "Resign failed" }, { status: 500 });
