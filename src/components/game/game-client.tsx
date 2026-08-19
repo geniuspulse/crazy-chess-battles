@@ -14,6 +14,7 @@ import CapturedPieces from "./captured-pieces";
 import VictoryOverlay, { type GameOutcome } from "./victory-overlay";
 import PromotionDialog from "./promotion-dialog";
 import BoardThemePicker from "./board-theme-picker";
+import QuickReactions from "./quick-reactions";
 
 interface GameClientProps {
   gameId: string;
@@ -53,6 +54,8 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const [soundOn, setSoundOn] = useState(true);
   const [boardTheme, setBoardTheme] = useState<BoardTheme>(getStoredBoardTheme());
   const [pendingPromotion, setPendingPromotion] = useState<{ from: string; to: string } | null>(null);
+  const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
+  const [legalMoveSquares, setLegalMoveSquares] = useState<string[]>([]);
   const lastFenRef = useRef(game.fen);
   const soundPlayedForEnd = useRef(false);
   const prevFenRef = useRef(game.fen);
@@ -136,8 +139,21 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         boxShadow: "inset 0 0 12px rgba(239,68,68,0.5)",
       };
     }
+    // Legal move hints
+    for (const sq of legalMoveSquares) {
+      styles[sq] = {
+        background: "radial-gradient(circle, rgba(139,92,246,0.25) 22%, transparent 24%)",
+      };
+    }
+    // Selected square highlight
+    if (selectedSquare) {
+      styles[selectedSquare] = {
+        ...styles[selectedSquare],
+        background: "radial-gradient(circle, rgba(139,92,246,0.4) 70%, transparent 72%)",
+      };
+    }
     return styles;
-  }, [lastMove, checkSquare]);
+  }, [lastMove, checkSquare, legalMoveSquares, selectedSquare]);
 
   const getLiveClock = (player: "white" | "black") => {
     if (!game.last_move_at || !game.white_clock_ms || !game.black_clock_ms) return "—";
@@ -157,6 +173,52 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
     const rank = to[1];
     return (piece.color === "w" && rank === "8") || (piece.color === "b" && rank === "1");
   }, [fen]);
+
+  // Handle piece click — show legal moves
+  const handlePieceClick = useCallback(({ square, piece }: { square: string | null; piece: { pieceType: string } | null }) => {
+    if (isSpectator || !myTurn || gameEnded || !piece || !square) return;
+    const game = new Chess(fen);
+    const squarePiece = game.get(square as any);
+    if (!squarePiece) return;
+    const isMyPiece = (isWhite && squarePiece.color === "w") || (isBlack && squarePiece.color === "b");
+    if (!isMyPiece) {
+      setSelectedSquare(null);
+      setLegalMoveSquares([]);
+      return;
+    }
+    setSelectedSquare(square);
+    const moves = game.moves({ square: square as any, verbose: true });
+    setLegalMoveSquares(moves.map((m: any) => m.to));
+  }, [isSpectator, myTurn, gameEnded, fen, isWhite, isBlack]);
+
+  // Handle square click — make move if legal target
+  const handleSquareClick = useCallback(({ square, piece }: { square: string; piece: { pieceType: string } | null }) => {
+    if (selectedSquare && legalMoveSquares.includes(square)) {
+      if (isPromotionMove(selectedSquare, square)) {
+        setPendingPromotion({ from: selectedSquare, to: square });
+      } else {
+        try {
+          const tempGame = new Chess(fen);
+          const move = tempGame.move({ from: selectedSquare, to: square, promotion: "q" });
+          if (move) {
+            setFen(tempGame.fen());
+            setMoveHistory(tempGame.history());
+            setLastMove({ from: selectedSquare, to: square });
+            playSound(detectMoveSound(move));
+            if (tempGame.inCheck() && !tempGame.isCheckmate()) {
+              setTimeout(() => playSound("check"), 100);
+            }
+          }
+        } catch {}
+        makeMove(selectedSquare, square);
+      }
+      setSelectedSquare(null);
+      setLegalMoveSquares([]);
+    } else if (!piece) {
+      setSelectedSquare(null);
+      setLegalMoveSquares([]);
+    }
+  }, [selectedSquare, legalMoveSquares, isPromotionMove, fen, makeMove]);
 
   const onDrop = useCallback(
     (sourceSquare: string, targetSquare: string): boolean => {
@@ -262,6 +324,8 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
             onPieceDrop: () => false,
             allowDragging: false,
             squareStyles: squareStyles,
+            showAnimations: true,
+            animationDurationInMs: 300,
             darkSquareStyle: { backgroundColor: boardTheme.dark },
             lightSquareStyle: { backgroundColor: boardTheme.light },
             boardStyle: { borderRadius: "8px", overflow: "hidden" },
@@ -292,6 +356,9 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         <div className="text-center text-xs text-ccb-muted">
           Move {game.move_count} · {game.time_control} · {game.rated ? "Ranked" : "Casual"}
         </div>
+
+        {/* Quick reactions */}
+        <QuickReactions position="side" />
       </div>
     );
 
@@ -347,6 +414,10 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
           },
           allowDragging: myTurn && !gameEnded,
           squareStyles: squareStyles,
+          showAnimations: true,
+          animationDurationInMs: 300,
+          onPieceClick: handlePieceClick,
+          onSquareClick: handleSquareClick,
           darkSquareStyle: { backgroundColor: boardTheme.dark },
           lightSquareStyle: { backgroundColor: boardTheme.light },
           boardStyle: { borderRadius: "8px", overflow: "hidden" },
@@ -400,6 +471,9 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
       <div className="text-center text-xs text-ccb-muted">
         Move {game.move_count} · {game.time_control}
       </div>
+
+      {/* Quick reactions */}
+      <QuickReactions position="side" />
     </div>
   );
 

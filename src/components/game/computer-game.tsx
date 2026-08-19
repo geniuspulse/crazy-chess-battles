@@ -14,6 +14,7 @@ import CapturedPieces from "./captured-pieces";
 import VictoryOverlay, { type GameOutcome } from "./victory-overlay";
 import PromotionDialog from "./promotion-dialog";
 import BoardThemePicker from "./board-theme-picker";
+import QuickReactions from "./quick-reactions";
 
 interface ComputerGameProps {
   difficulty: AIDifficulty;
@@ -61,6 +62,8 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   const [soundOn, setSoundOn] = useState(true);
   const [boardTheme, setBoardTheme] = useState<BoardTheme>(getStoredBoardTheme());
   const [pendingPromotion, setPendingPromotion] = useState<{ from: string; to: string } | null>(null);
+  const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
+  const [legalMoveSquares, setLegalMoveSquares] = useState<string[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const soundPlayedForEnd = useRef(false);
 
@@ -85,8 +88,21 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
         boxShadow: "inset 0 0 12px rgba(239,68,68,0.5)",
       };
     }
+    // Legal move hints
+    for (const sq of legalMoveSquares) {
+      styles[sq] = {
+        background: "radial-gradient(circle, rgba(139,92,246,0.25) 22%, transparent 24%)",
+      };
+    }
+    // Selected square highlight
+    if (selectedSquare) {
+      styles[selectedSquare] = {
+        ...styles[selectedSquare],
+        background: "radial-gradient(circle, rgba(139,92,246,0.4) 70%, transparent 72%)",
+      };
+    }
     return styles;
-  }, [lastMove, checkSquare]);
+  }, [lastMove, checkSquare, legalMoveSquares, selectedSquare]);
 
   // Live clock tick
   useEffect(() => {
@@ -186,6 +202,44 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     return (piece.color === "w" && rank === "8") || (piece.color === "b" && rank === "1");
   }, [fen]);
 
+
+  // Handle piece click — show legal moves
+  const handlePieceClick = useCallback(({ square, piece }: { square: string | null; piece: { pieceType: string } | null }) => {
+    if (!isPlayerTurn || gameEnded) return;
+    if (!piece) return;
+    // Check if it's our piece
+    const game = new Chess(fen);
+    const squarePiece = game.get(square as any);
+    if (!squarePiece) return;
+    const isMyPiece = (isPlayerWhite && squarePiece.color === "w") || (!isPlayerWhite && squarePiece.color === "b");
+    if (!isMyPiece) {
+      setSelectedSquare(null);
+      setLegalMoveSquares([]);
+      return;
+    }
+    setSelectedSquare(square);
+    // Get legal moves from this square
+    const moves = game.moves({ square: square as any, verbose: true });
+    setLegalMoveSquares(moves.map((m: any) => m.to));
+  }, [isPlayerTurn, gameEnded, fen, isPlayerWhite]);
+
+  // Handle square click — if a legal move target, make the move
+  const handleSquareClick = useCallback(({ square, piece }: { square: string; piece: { pieceType: string } | null }) => {
+    if (selectedSquare && legalMoveSquares.includes(square)) {
+      // Check promotion
+      if (isPromotionMove(selectedSquare, square)) {
+        setPendingPromotion({ from: selectedSquare, to: square });
+      } else {
+        applyMove(selectedSquare, square, "q");
+      }
+      setSelectedSquare(null);
+      setLegalMoveSquares([]);
+    } else if (!piece) {
+      setSelectedSquare(null);
+      setLegalMoveSquares([]);
+    }
+  }, [selectedSquare, legalMoveSquares, isPromotionMove, applyMove]);
+
   // Player drop handler — intercept promotions
   const onDrop = useCallback((sourceSquare: string, targetSquare: string): boolean => {
     if (!isPlayerTurn || gameEnded) return false;
@@ -220,6 +274,8 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     setMoveCount(0);
     setMoveHistory([]);
     setLastMove(null);
+    setSelectedSquare(null);
+    setLegalMoveSquares([]);
     setWhiteClock(initialMinutes * 60 * 1000);
     setBlackClock(initialMinutes * 60 * 1000);
     setLastMoveAt(Date.now());
@@ -300,6 +356,10 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
           },
           allowDragging: isPlayerTurn && !gameEnded,
           squareStyles: squareStyles,
+          showAnimations: true,
+          animationDurationInMs: 300,
+          onPieceClick: handlePieceClick,
+          onSquareClick: handleSquareClick,
           darkSquareStyle: { backgroundColor: boardTheme.dark },
           lightSquareStyle: { backgroundColor: boardTheme.light },
           boardStyle: { borderRadius: "8px", overflow: "hidden" },
@@ -376,6 +436,9 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
       <div className="text-center text-xs text-ccb-muted">
         Move {moveCount} · {DIFFICULTY_LABELS[difficulty]} · vs Computer
       </div>
+
+      {/* Quick reactions */}
+      <QuickReactions position="side" />
     </div>
   );
 
