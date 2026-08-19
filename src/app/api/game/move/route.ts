@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { validateAndApplyMove } from "@/lib/game/chess-engine";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { awardBerries } from "@/lib/berry/award";
 
 export async function POST(req: NextRequest) {
   try {
@@ -165,6 +166,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
+
+    // Award berries to winner (quick match only — checkmate/stalemate)
+    if (gameEnded && result.winner) {
+      const winnerId = result.winner === "white" ? game.white_player_id : game.black_player_id;
+      const berries = await awardBerries(gameId, winnerId);
+    }
 
     // Process tournament game result
     if (gameEnded && result.winner && game.tournament_id) {

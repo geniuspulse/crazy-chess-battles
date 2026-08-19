@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { awardBerries } from "@/lib/berry/award";
 
 export async function POST(req: NextRequest) {
   try {
@@ -86,6 +87,9 @@ export async function POST(req: NextRequest) {
             })
             .eq("id", loserId);
         }
+
+        // Award berries to winner (quick match only)
+        await awardBerries(game.id, winnerId);
 
         // Check if this is a Battle game and settle
         const { data: battle } = await admin

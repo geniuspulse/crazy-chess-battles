@@ -2,6 +2,7 @@ import { processTournamentGameResult } from "@/lib/tournament/results";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { awardBerries } from "@/lib/berry/award";
 
 export async function POST(req: NextRequest) {
   try {
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to update game" }, { status: 500 });
     }
 
-    // Update ratings (same logic as move API)
+    // Update ratings
     const { data: whiteProfile } = await admin
       .from("profiles")
       .select("rating, games_played, wins, losses, draws")
@@ -91,6 +92,10 @@ export async function POST(req: NextRequest) {
         black_rating_change: blackNewRating - blackProfile.rating,
       }).eq("id", gameId);
     }
+
+    // Award berries to winner (quick match only)
+    const winnerId = winner === "white" ? game.white_player_id : game.black_player_id;
+    const berries = await awardBerries(gameId, winnerId);
 
     // Process tournament game result if this is a tournament game
     const { data: fullGame } = await admin
@@ -135,7 +140,7 @@ export async function POST(req: NextRequest) {
       }).catch((e) => console.error("Battle settlement failed:", e));
     }
 
-    return NextResponse.json({ status: "resigned", winner });
+    return NextResponse.json({ status: "resigned", winner, berries });
   } catch {
     return NextResponse.json({ error: "Resign failed" }, { status: 500 });
   }

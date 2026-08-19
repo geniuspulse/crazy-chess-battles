@@ -14,7 +14,7 @@ export default async function WalletPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("wallet_balance_cents, username, display_name, email, phone")
+    .select("wallet_balance_cents, berry_balance, username, display_name, email, phone")
     .eq("id", user.id)
     .single();
 
@@ -28,6 +28,7 @@ export default async function WalletPage() {
   return (
     <WalletClient
       balanceCents={profile?.wallet_balance_cents || 0}
+      berryBalance={profile?.berry_balance || 0}
       email={profile?.email || user.email || ""}
       deposits={deposits || []}
       phone={profile?.phone || null}

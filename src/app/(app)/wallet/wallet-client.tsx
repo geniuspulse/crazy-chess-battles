@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Wallet, Smartphone, CreditCard, Check, Loader2, ArrowDown, ArrowUp, Clock } from "lucide-react";
+import { Wallet, Smartphone, CreditCard, Check, Loader2, ArrowDown, ArrowUp, Clock, Cherry } from "lucide-react";
 
 interface Deposit {
   id: string;
@@ -25,19 +25,22 @@ interface Withdrawal {
 
 interface WalletClientProps {
   balanceCents: number;
+  berryBalance: number;
   email: string;
   deposits: Deposit[];
   phone?: string | null;
 }
 
 const QUICK_AMOUNTS = [500, 1000, 2000, 5000, 10000, 25000];
+const BERRY_VALUE_CENTS = 1000; // 100 berries = MWK 1,000
+const MIN_REDEEM_BERRIES = 50;
 
 const OPERATORS = [
   { id: "27494cb5-ba9e-437f-a114-4e7a7686bcca", name: "TNM Mpamba", color: "bg-blue-500" },
   { id: "20be6c20-adeb-4b5b-a7ba-0769820df4fb", name: "Airtel Money", color: "bg-red-500" },
 ];
 
-export default function WalletClient({ balanceCents, email, deposits, phone: savedPhone }: WalletClientProps) {
+export default function WalletClient({ balanceCents, berryBalance, email, deposits, phone: savedPhone }: WalletClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<"deposit" | "withdraw">("deposit");
@@ -53,8 +56,10 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
   const [pendingChargeId, setPendingChargeId] = useState<string | null>(null);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [withdrawLoading, setWithdrawLoading] = useState(false);
+  const [redeemAmount, setRedeemAmount] = useState(100);
+  const [redeemLoading, setRedeemLoading] = useState(false);
+  const [berries, setBerries] = useState(berryBalance);
 
-  // Fetch real operators from Paychangu
   useEffect(() => {
     fetch("/api/payments/operators")
       .then((res) => res.json())
@@ -74,7 +79,6 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
       .catch(() => {});
   }, []);
 
-  // Fetch user withdrawals
   useEffect(() => {
     fetch("/api/withdrawals/list")
       .then((res) => res.json())
@@ -84,7 +88,6 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
       .catch(() => {});
   }, []);
 
-  // Check for tx_ref return from card payment
   useEffect(() => {
     const txRef = searchParams.get("tx_ref");
     if (txRef) {
@@ -122,7 +125,6 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
     }
   }, [searchParams, router]);
 
-  // Poll for mobile money payment status
   useEffect(() => {
     if (!pendingChargeId) return;
 
@@ -261,7 +263,6 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
       setSuccess(`Withdrawal request for MWK ${amount.toLocaleString()} submitted. You'll receive it within 24 hours after admin approval.`);
       router.refresh();
 
-      // Refresh withdrawals list
       fetch("/api/withdrawals/list")
         .then((r) => r.json())
         .then((d) => { if (d.withdrawals) setWithdrawals(d.withdrawals); });
@@ -271,6 +272,47 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
       setWithdrawLoading(false);
     }
   };
+
+  const handleRedeemBerries = async () => {
+    setRedeemLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      if (redeemAmount < MIN_REDEEM_BERRIES) {
+        setError(`Minimum redemption is ${MIN_REDEEM_BERRIES} berries`);
+        setRedeemLoading(false);
+        return;
+      }
+      if (redeemAmount > berries) {
+        setError(`You only have ${berries} berries`);
+        setRedeemLoading(false);
+        return;
+      }
+
+      const res = await fetch("/api/berry/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ berries: redeemAmount }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Redemption failed");
+      }
+
+      setBerries(data.newBerryBalance);
+      setSuccess(`Redeemed ${data.berriesRedeemed} berries for ${data.cashFormatted}! Added to your wallet.`);
+      router.refresh();
+    } catch (err: any) {
+      setError(err.message && err.message.length < 200 ? err.message : "Redemption failed");
+    } finally {
+      setRedeemLoading(false);
+    }
+  };
+
+  const redeemCashValue = Math.round((redeemAmount / 100) * BERRY_VALUE_CENTS);
 
   return (
     <div className="space-y-4 sm:space-y-6 max-w-2xl mx-auto pb-20 sm:pb-0">
@@ -295,6 +337,60 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
         </div>
       </div>
 
+      {/* Berry Card */}
+      <div className="card bg-gradient-to-br from-red-500/10 to-ccb-surface border-red-500/20">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-xs text-ccb-muted uppercase tracking-wide flex items-center gap-1">
+              <Cherry className="w-3.5 h-3.5 text-red-500" />
+              Berry Balance
+            </p>
+            <p className="text-3xl font-bold mt-1">{berries.toLocaleString()} 🍒</p>
+            <p className="text-xs text-ccb-muted mt-1">
+              Win quick matches to earn berries • 100 berries = MWK 1,000
+            </p>
+          </div>
+          <div className="w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center">
+            <Cherry className="w-7 h-7 text-red-500" />
+          </div>
+        </div>
+
+        {/* Redeem section */}
+        {berries >= MIN_REDEEM_BERRIES && (
+          <div className="mt-3 pt-3 border-t border-red-500/10">
+            <div className="flex items-center gap-2 mb-2">
+              <input
+                type="number"
+                value={redeemAmount}
+                onChange={(e) => setRedeemAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                min={MIN_REDEEM_BERRIES}
+                max={berries}
+                step={10}
+                className="flex-1 px-3 py-2 rounded-lg bg-ccb-surface border border-ccb-border text-sm"
+                placeholder="Berries to redeem"
+              />
+              <button
+                onClick={handleRedeemBerries}
+                disabled={redeemLoading || redeemAmount < MIN_REDEEM_BERRIES || redeemAmount > berries}
+                className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                {redeemLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Redeem
+              </button>
+            </div>
+            <p className="text-xs text-ccb-muted">
+              = MWK {Math.floor(redeemCashValue / 100).toLocaleString()} to wallet
+            </p>
+          </div>
+        )}
+
+        {berries < MIN_REDEEM_BERRIES && (
+          <p className="text-xs text-ccb-muted mt-2 pt-2 border-t border-red-500/10">
+            Win {MIN_REDEEM_BERRIES - berries} more berries to unlock redemption ({MIN_REDEEM_BERRIES} minimum)
+          </p>
+        )}
+      </div>
+
       {/* Success message */}
       {success && (
         <div className="rounded-lg bg-ccb-success/10 border border-ccb-success/30 text-ccb-success px-4 py-3 text-sm flex items-center gap-2">
@@ -305,38 +401,26 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
 
       {/* Error message */}
       {error && (
-        <div className="rounded-lg bg-ccb-danger/10 border border-ccb-danger/30 text-ccb-danger px-4 py-3 text-sm">
+        <div className="rounded-lg bg-red-500/10 border border-red-500/30 text-red-500 px-4 py-3 text-sm">
           {error}
         </div>
       )}
 
-      {/* Polling indicator */}
-      {polling && (
-        <div className="rounded-lg bg-ccb-primary/10 border border-ccb-primary/30 px-4 py-3 text-sm flex items-center gap-2 text-ccb-primary">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          Waiting for payment confirmation...
-        </div>
-      )}
-
-      {/* Tab Switcher */}
-      <div className="flex gap-2">
+      {/* Tabs */}
+      <div className="flex gap-2 p-1 bg-ccb-surface rounded-xl">
         <button
-          onClick={() => { setTab("deposit"); setError(null); setSuccess(null); }}
-          className={`flex-1 px-4 py-3 rounded-lg border transition-all flex items-center justify-center gap-2 text-sm font-medium ${
-            tab === "deposit"
-              ? "border-ccb-primary bg-ccb-primary/10 text-ccb-primary"
-              : "border-ccb-surface text-ccb-muted hover:border-ccb-border"
+          onClick={() => setTab("deposit")}
+          className={`flex-1 py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 transition-colors ${
+            tab === "deposit" ? "bg-ccb-primary text-white" : "text-ccb-muted"
           }`}
         >
           <ArrowDown className="w-4 h-4" />
           Deposit
         </button>
         <button
-          onClick={() => { setTab("withdraw"); setError(null); setSuccess(null); }}
-          className={`flex-1 px-4 py-3 rounded-lg border transition-all flex items-center justify-center gap-2 text-sm font-medium ${
-            tab === "withdraw"
-              ? "border-ccb-primary bg-ccb-primary/10 text-ccb-primary"
-              : "border-ccb-surface text-ccb-muted hover:border-ccb-border"
+          onClick={() => setTab("withdraw")}
+          className={`flex-1 py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 transition-colors ${
+            tab === "withdraw" ? "bg-ccb-primary text-white" : "text-ccb-muted"
           }`}
         >
           <ArrowUp className="w-4 h-4" />
@@ -344,52 +428,23 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
         </button>
       </div>
 
-      {/* Deposit Form */}
-      {tab === "deposit" && (
-        <div className="card space-y-5">
-          <h3 className="font-medium flex items-center gap-2">
-            <ArrowDown className="w-4 h-4 text-ccb-primary" />
-            Deposit Funds
-          </h3>
-
-          {/* Method tabs */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setMethod("mobile_money")}
-              className={`flex-1 px-4 py-3 rounded-lg border transition-all flex items-center justify-center gap-2 text-sm font-medium ${
-                method === "mobile_money"
-                  ? "border-ccb-primary bg-ccb-primary/10 text-ccb-primary"
-                  : "border-ccb-surface text-ccb-muted hover:border-ccb-border"
-              }`}
-            >
-              <Smartphone className="w-4 h-4" />
-              Mobile Money
-            </button>
-            <button
-              onClick={() => setMethod("card")}
-              className={`flex-1 px-4 py-3 rounded-lg border transition-all flex items-center justify-center gap-2 text-sm font-medium ${
-                method === "card"
-                  ? "border-ccb-primary bg-ccb-primary/10 text-ccb-primary"
-                  : "border-ccb-surface text-ccb-muted hover:border-ccb-border"
-              }`}
-            >
-              <CreditCard className="w-4 h-4" />
-              Card
-            </button>
-          </div>
-
-          {/* Amount selection */}
+      {tab === "deposit" ? (
+        <div className="space-y-4">
           <div>
-            <label className="text-sm text-ccb-muted mb-2 block">Amount (MWK)</label>
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            <label className="text-sm font-medium text-ccb-muted mb-2 block">Amount (MWK)</label>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(Math.max(100, parseInt(e.target.value) || 0))}
+              className="w-full px-4 py-3 rounded-xl bg-ccb-surface border border-ccb-border text-lg font-semibold"
+            />
+            <div className="flex gap-2 mt-2 flex-wrap">
               {QUICK_AMOUNTS.map((amt) => (
                 <button
                   key={amt}
                   onClick={() => setAmount(amt)}
-                  className={`px-3 py-2 rounded-lg border text-sm font-medium transition-all ${
-                    amount === amt
-                      ? "border-ccb-primary bg-ccb-primary/10 text-ccb-primary"
-                      : "border-ccb-surface text-ccb-muted hover:border-ccb-border"
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    amount === amt ? "bg-ccb-primary text-white" : "bg-ccb-surface text-ccb-muted border border-ccb-border"
                   }`}
                 >
                   {amt.toLocaleString()}
@@ -398,21 +453,41 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
             </div>
           </div>
 
-          {/* Mobile money fields */}
+          <div>
+            <label className="text-sm font-medium text-ccb-muted mb-2 block">Payment Method</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setMethod("mobile_money")}
+                className={`flex-1 py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-2 border transition-colors ${
+                  method === "mobile_money" ? "border-ccb-primary bg-ccb-primary/10 text-ccb-primary" : "border-ccb-border text-ccb-muted"
+                }`}
+              >
+                <Smartphone className="w-4 h-4" />
+                Mobile Money
+              </button>
+              <button
+                onClick={() => setMethod("card")}
+                className={`flex-1 py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-2 border transition-colors ${
+                  method === "card" ? "border-ccb-primary bg-ccb-primary/10 text-ccb-primary" : "border-ccb-border text-ccb-muted"
+                }`}
+              >
+                <CreditCard className="w-4 h-4" />
+                Card
+              </button>
+            </div>
+          </div>
+
           {method === "mobile_money" && (
             <>
-              {/* Operator selection */}
               <div>
-                <label className="text-sm text-ccb-muted mb-2 block">Operator</label>
+                <label className="text-sm font-medium text-ccb-muted mb-2 block">Operator</label>
                 <div className="flex gap-2">
                   {operators.map((op) => (
                     <button
                       key={op.id}
                       onClick={() => setOperator(op.id)}
-                      className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${
-                        operator === op.id
-                          ? "border-ccb-primary bg-ccb-primary/10 text-ccb-primary"
-                          : "border-ccb-surface text-ccb-muted hover:border-ccb-border"
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
+                        operator === op.id ? "border-ccb-primary bg-ccb-primary/10" : "border-ccb-border"
                       }`}
                     >
                       {op.name}
@@ -420,107 +495,68 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
                   ))}
                 </div>
               </div>
-
-              {/* Phone number */}
               <div>
-                <label className="text-sm text-ccb-muted mb-2 block">Phone Number</label>
+                <label className="text-sm font-medium text-ccb-muted mb-2 block">Phone Number</label>
                 <input
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="0991234567"
-                  className="input-field"
+                  className="w-full px-4 py-3 rounded-xl bg-ccb-surface border border-ccb-border"
                 />
-                <p className="text-xs text-ccb-muted mt-1">
-                  You'll receive a prompt on this number to authorize the payment
-                </p>
               </div>
             </>
           )}
 
-          {/* Card info */}
-          {method === "card" && (
-            <div className="rounded-lg bg-ccb-surface/50 border border-ccb-surface p-3">
-              <p className="text-xs text-ccb-muted">
-                You'll be redirected to Paychangu's secure checkout to enter your card details.
-                Your card information is never stored on our servers.
-              </p>
-            </div>
-          )}
-
-          {/* Deposit button */}
           <button
             onClick={handleDeposit}
             disabled={loading || polling}
-            className="btn-primary w-full py-3 flex items-center justify-center gap-2"
+            className="w-full py-3.5 rounded-xl bg-ccb-primary text-white font-semibold flex items-center justify-center gap-2 hover:bg-ccb-primary/90 disabled:opacity-50"
           >
-            {loading ? (
+            {loading || polling ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Processing...</span>
-              </>
-            ) : polling ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Waiting for confirmation...</span>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                {polling ? "Waiting for payment..." : "Processing..."}
               </>
             ) : (
-              <>
-                <ArrowDown className="w-4 h-4" />
-                <span>Deposit MWK {amount.toLocaleString()}</span>
-              </>
+              <>Deposit MWK {amount.toLocaleString()}</>
             )}
           </button>
         </div>
-      )}
-
-      {/* Withdraw Form */}
-      {tab === "withdraw" && (
-        <div className="card space-y-5">
-          <h3 className="font-medium flex items-center gap-2">
-            <ArrowUp className="w-4 h-4 text-ccb-primary" />
-            Withdraw Funds
-          </h3>
-
-          <div className="rounded-lg bg-ccb-surface/50 border border-ccb-surface p-3">
-            <p className="text-xs text-ccb-muted">
-              Withdrawals are processed within 24 hours. Minimum: MWK 10. Funds are debited immediately and held until your withdrawal is approved.
-            </p>
-          </div>
-
-          {/* Amount */}
+      ) : (
+        <div className="space-y-4">
           <div>
-            <label className="text-sm text-ccb-muted mb-2 block">Amount (MWK)</label>
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
-              {QUICK_AMOUNTS.filter(a => a >= 500).map((amt) => (
+            <label className="text-sm font-medium text-ccb-muted mb-2 block">Amount (MWK)</label>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(Math.max(100, parseInt(e.target.value) || 0))}
+              className="w-full px-4 py-3 rounded-xl bg-ccb-surface border border-ccb-border text-lg font-semibold"
+            />
+            <div className="flex gap-2 mt-2 flex-wrap">
+              {QUICK_AMOUNTS.map((amt) => (
                 <button
                   key={amt}
                   onClick={() => setAmount(amt)}
-                  className={`px-3 py-2 rounded-lg border text-sm font-medium transition-all ${
-                    amount === amt
-                      ? "border-ccb-primary bg-ccb-primary/10 text-ccb-primary"
-                      : "border-ccb-surface text-ccb-muted hover:border-ccb-border"
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    amount === amt ? "bg-ccb-primary text-white" : "bg-ccb-surface text-ccb-muted border border-ccb-border"
                   }`}
                 >
                   {amt.toLocaleString()}
                 </button>
               ))}
             </div>
-            <p className="text-xs text-ccb-muted mt-2">Available: MWK {Math.floor(balanceCents / 100).toLocaleString()}</p>
           </div>
 
-          {/* Operator */}
           <div>
-            <label className="text-sm text-ccb-muted mb-2 block">Mobile Money Operator</label>
+            <label className="text-sm font-medium text-ccb-muted mb-2 block">Operator</label>
             <div className="flex gap-2">
               {operators.map((op) => (
                 <button
                   key={op.id}
                   onClick={() => setOperator(op.id)}
-                  className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${
-                    operator === op.id
-                      ? "border-ccb-primary bg-ccb-primary/10 text-ccb-primary"
-                      : "border-ccb-surface text-ccb-muted hover:border-ccb-border"
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
+                    operator === op.id ? "border-ccb-primary bg-ccb-primary/10" : "border-ccb-border"
                   }`}
                 >
                   {op.name}
@@ -529,103 +565,81 @@ export default function WalletClient({ balanceCents, email, deposits, phone: sav
             </div>
           </div>
 
-          {/* Phone */}
           <div>
-            <label className="text-sm text-ccb-muted mb-2 block">Phone Number</label>
+            <label className="text-sm font-medium text-ccb-muted mb-2 block">Phone Number</label>
             <input
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="0991234567"
-              className="input-field"
+              className="w-full px-4 py-3 rounded-xl bg-ccb-surface border border-ccb-border"
             />
-            <p className="text-xs text-ccb-muted mt-1">Money will be sent to this number</p>
           </div>
 
-          {/* Withdraw button */}
           <button
             onClick={handleWithdraw}
             disabled={withdrawLoading}
-            className="btn-primary w-full py-3 flex items-center justify-center gap-2"
+            className="w-full py-3.5 rounded-xl bg-ccb-primary text-white font-semibold flex items-center justify-center gap-2 hover:bg-ccb-primary/90 disabled:opacity-50"
           >
             {withdrawLoading ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Submitting...</span>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Processing...
               </>
             ) : (
-              <>
-                <ArrowUp className="w-4 h-4" />
-                <span>Withdraw MWK {amount.toLocaleString()}</span>
-              </>
+              <>Withdraw MWK {amount.toLocaleString()}</>
             )}
           </button>
+
+          {withdrawals.length > 0 && (
+            <div>
+              <p className="text-sm font-medium text-ccb-muted mb-2">Withdrawal History</p>
+              <div className="space-y-2">
+                {withdrawals.slice(0, 5).map((w) => (
+                  <div key={w.id} className="flex items-center justify-between p-3 rounded-lg bg-ccb-surface border border-ccb-border">
+                    <div>
+                      <p className="text-sm font-medium">MWK {Math.floor(w.amount_cents / 100).toLocaleString()}</p>
+                      <p className="text-xs text-ccb-muted">{w.operator_name} • {new Date(w.created_at).toLocaleDateString()}</p>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      w.status === "completed" ? "bg-green-500/10 text-green-600" :
+                      w.status === "pending" ? "bg-yellow-500/10 text-yellow-600" :
+                      w.status === "approved" ? "bg-blue-500/10 text-blue-600" :
+                      "bg-red-500/10 text-red-500"
+                    }`}>
+                      {w.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Transaction history */}
-      <div className="card space-y-3">
-        <h3 className="font-medium text-sm text-ccb-muted uppercase tracking-wide">Transaction History</h3>
-        {deposits.length > 0 || withdrawals.length > 0 ? (
+      {/* Deposit history */}
+      {deposits.length > 0 && (
+        <div>
+          <p className="text-sm font-medium text-ccb-muted mb-2">Deposit History</p>
           <div className="space-y-2">
-            {/* Deposits */}
-            {deposits.map((d) => (
-              <div key={d.id} className="flex items-center justify-between p-3 rounded-lg bg-ccb-surface/50">
-                <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    d.status === "success" ? "bg-ccb-success/10" : "bg-ccb-muted/10"
-                  }`}>
-                    <ArrowDown className="w-4 h-4 text-ccb-success" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium">MWK {Math.floor(d.amount_cents / 100).toLocaleString()}</div>
-                    <div className="text-xs text-ccb-muted">
-                      {new Date(d.created_at).toLocaleDateString()} · {d.method.replace("_", " ")}
-                    </div>
-                  </div>
+            {deposits.slice(0, 8).map((d) => (
+              <div key={d.id} className="flex items-center justify-between p-3 rounded-lg bg-ccb-surface border border-ccb-border">
+                <div>
+                  <p className="text-sm font-medium">MWK {Math.floor(d.amount_cents / 100).toLocaleString()}</p>
+                  <p className="text-xs text-ccb-muted">{d.method === "mobile_money" ? "Mobile Money" : "Card"} • {new Date(d.created_at).toLocaleDateString()}</p>
                 </div>
-                <span className={`text-xs px-2 py-1 rounded ${
-                  d.status === "success" ? "bg-ccb-success/10 text-ccb-success" :
-                  d.status === "pending" ? "bg-ccb-accent/10 text-ccb-accent" :
-                  "bg-ccb-danger/10 text-ccb-danger"
+                <span className={`text-xs px-2 py-1 rounded-full ${
+                  d.status === "success" ? "bg-green-500/10 text-green-600" :
+                  d.status === "pending" ? "bg-yellow-500/10 text-yellow-600" :
+                  "bg-red-500/10 text-red-500"
                 }`}>
                   {d.status}
                 </span>
               </div>
             ))}
-            {/* Withdrawals */}
-            {withdrawals.map((w) => (
-              <div key={w.id} className="flex items-center justify-between p-3 rounded-lg bg-ccb-surface/50">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center bg-ccb-accent/10">
-                    <ArrowUp className="w-4 h-4 text-ccb-accent" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium">MWK {Math.floor(w.amount_cents / 100).toLocaleString()}</div>
-                    <div className="text-xs text-ccb-muted">
-                      {new Date(w.created_at).toLocaleDateString()} · {w.operator_name}
-                      {w.admin_notes ? ` · ${w.admin_notes}` : ""}
-                    </div>
-                  </div>
-                </div>
-                <span className={`text-xs px-2 py-1 rounded ${
-                  w.status === "completed" ? "bg-ccb-success/10 text-ccb-success" :
-                  w.status === "pending" ? "bg-ccb-accent/10 text-ccb-accent" :
-                  w.status === "approved" ? "bg-ccb-primary/10 text-ccb-primary" :
-                  "bg-ccb-danger/10 text-ccb-danger"
-                }`}>
-                  {w.status}
-                </span>
-              </div>
-            ))}
           </div>
-        ) : (
-          <div className="text-center py-6 text-ccb-muted text-sm">
-            <Clock className="w-6 h-6 mx-auto mb-1 opacity-50" />
-            No transactions yet
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
