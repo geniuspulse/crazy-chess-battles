@@ -187,3 +187,29 @@
     transform: scale(1.1);
   }
 }
+
+/* Game screen — fixed, non-scrolling viewport (chess.com style) */
+.game-viewport {
+  height: 100dvh;
+  overflow: hidden;
+}
+@media (min-width: 640px) {
+  .game-viewport {
+    height: calc(100dvh - 4rem);
+  }
+}
+
+/* Slide-up bottom sheet for mobile game toolbar panels */
+@keyframes sheet-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-sheet-up {
+  animation: sheet-up 0.18s ease-out;
+}

@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
-import { Clock, Flag, ArrowLeft, Bot, Volume2, VolumeX } from "lucide-react";
+import { Clock, Flag, ArrowLeft, Bot, Volume2, VolumeX, List, Smile, Palette, X } from "lucide-react";
 import Link from "next/link";
 import { getBestMove, type AIDifficulty } from "@/lib/game/chess-ai";
 import { getCapturedPieces, getCheckSquare } from "@/lib/game/board-helpers";
 import { playSound, detectMoveSound, setSoundEnabled, isSoundEnabled } from "@/lib/game/sound";
 import { getStoredBoardTheme, type BoardTheme } from "@/lib/game/board-themes";
+import { useBoardSize } from "@/hooks/use-board-size";
+import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import MoveHistory from "./move-history";
 import CapturedPieces from "./captured-pieces";
 import VictoryOverlay, { type GameOutcome } from "./victory-overlay";
@@ -38,6 +40,8 @@ const STATUS_LABELS: Record<string, string> = {
   timeout: "Time out",
 };
 
+type SheetType = "moves" | "reactions" | "theme" | null;
+
 function formatClock(ms: number | null): string {
   if (ms === null || ms === undefined) return "—";
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -66,8 +70,12 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [legalMoveSquares, setLegalMoveSquares] = useState<string[]>([]);
   const [premove, setPremove] = useState<{ from: string; to: string } | null>(null);
+  const [activeSheet, setActiveSheet] = useState<SheetType>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const soundPlayedForEnd = useRef(false);
+  const { containerRef: boardContainerRef, size: boardSize } = useBoardSize(600, 220);
+
+  useLockBodyScroll();
 
   const isPlayerWhite = playerColor === "white";
   const isPlayerTurn = (isPlayerWhite && turn === "white") || (!isPlayerWhite && turn === "black");
@@ -217,16 +225,13 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     return (piece.color === "w" && rank === "8") || (piece.color === "b" && rank === "1");
   }, [fen]);
 
-
   // Auto-execute premove when it becomes our turn
   useEffect(() => {
     if (isPlayerTurn && premove && !gameEnded) {
-      // Verify the premove is still legal
       try {
         const game = new Chess(fen);
         const move = game.move({ from: premove.from, to: premove.to, promotion: "q" });
         if (move !== null) {
-          // Check promotion
           if (isPromotionMove(premove.from, premove.to)) {
             setPendingPromotion({ from: premove.from, to: premove.to });
           } else {
@@ -240,9 +245,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
 
   // Handle piece click — show legal moves
   const handlePieceClick = useCallback(({ square, piece }: { square: string | null; piece: { pieceType: string } | null }) => {
-    if (!isPlayerTurn || gameEnded) return;
-    if (!piece) return;
-    // Check if it's our piece
+    if (!isPlayerTurn || gameEnded || !piece || !square) return;
     const game = new Chess(fen);
     const squarePiece = game.get(square as any);
     if (!squarePiece) return;
@@ -253,7 +256,6 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
       return;
     }
     setSelectedSquare(square);
-    // Get legal moves from this square
     const moves = game.moves({ square: square as any, verbose: true });
     setLegalMoveSquares(moves.map((m: any) => m.to));
   }, [isPlayerTurn, gameEnded, fen, isPlayerWhite]);
@@ -261,7 +263,6 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   // Handle square click — if a legal move target, make the move
   const handleSquareClick = useCallback(({ square, piece }: { square: string; piece: { pieceType: string } | null }) => {
     if (selectedSquare && legalMoveSquares.includes(square)) {
-      // Check promotion
       if (isPromotionMove(selectedSquare, square)) {
         setPendingPromotion({ from: selectedSquare, to: square });
       } else {
@@ -278,18 +279,15 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   // Player drop handler — intercept promotions
   const onDrop = useCallback((sourceSquare: string, targetSquare: string): boolean => {
     if (gameEnded) return false;
-    // If it's our turn, make the real move
     if (isPlayerTurn) {
-      // Check if this is a promotion move
       if (isPromotionMove(sourceSquare, targetSquare)) {
         setPendingPromotion({ from: sourceSquare, to: targetSquare });
-        return false; // don't apply yet — wait for user selection
+        return false;
       }
       return applyMove(sourceSquare, targetSquare, "q");
     }
     // Not our turn — set a premove
     if (!targetSquare) return false;
-    // Verify it's our piece being moved
     const game = new Chess(fen);
     const piece = game.get(sourceSquare as any);
     if (!piece) return false;
@@ -365,6 +363,8 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     playSound("gameStart");
   }, []);
 
+  const toggleSheet = (sheet: SheetType) => setActiveSheet((prev) => (prev === sheet ? null : sheet));
+
   const opponentData = isPlayerWhite
     ? { name: DIFFICULTY_LABELS[difficulty], color: "black", symbol: "♚", captured: captured.black, advantage: -captured.advantage, clock: getLiveClock("black"), isActive: turn === "black" && !gameEnded }
     : { name: DIFFICULTY_LABELS[difficulty], color: "white", symbol: "♔", captured: captured.white, advantage: captured.advantage, clock: getLiveClock("white"), isActive: turn === "white" && !gameEnded };
@@ -373,136 +373,208 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     ? { name: "You", color: "white", symbol: "♔", captured: captured.white, advantage: captured.advantage, clock: getLiveClock("white"), isActive: isPlayerTurn && !gameEnded }
     : { name: "You", color: "black", symbol: "♚", captured: captured.black, advantage: -captured.advantage, clock: getLiveClock("black"), isActive: isPlayerTurn && !gameEnded };
 
-  const board = (
-    <div className="w-full">
-      {/* Opponent bar */}
-      <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2 mb-1">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
-            <Bot className="w-4 h-4 text-ccb-muted" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium leading-tight">{opponentData.name}</span>
-            <CapturedPieces pieces={opponentData.captured} advantage={opponentData.advantage} perspective="top" />
-          </div>
-        </div>
-        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-lg font-bold transition-colors ${
-          opponentData.isActive ? "bg-ccb-primary/15 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
-        }`}>
-          <Clock className="w-4 h-4" />
-          {opponentData.clock}
-        </div>
-      </div>
-
-      {/* Chessboard */}
-      <div className="w-full max-w-[600px] aspect-square mx-auto">
-        <Chessboard options={{
-          position: fen,
-          boardOrientation: isPlayerWhite ? "white" : "black",
-          onPieceDrop: ({ sourceSquare, targetSquare }) => {
-            if (!targetSquare) return false;
-            return onDrop(sourceSquare, targetSquare);
-          },
-          allowDragging: !gameEnded,
-          squareStyles: squareStyles,
-          showAnimations: true,
-          animationDurationInMs: 300,
-          showNotation: true,
-          darkSquareNotationStyle: { color: boardTheme.light, fontSize: "10px", fontWeight: 600 },
-          lightSquareNotationStyle: { color: boardTheme.dark, fontSize: "10px", fontWeight: 600 },
-          onPieceClick: handlePieceClick,
-          onSquareClick: handleSquareClick,
-          darkSquareStyle: { backgroundColor: boardTheme.dark },
-          lightSquareStyle: { backgroundColor: boardTheme.light },
-          boardStyle: { borderRadius: "8px", overflow: "hidden" },
-        }} />
-      </div>
-
-      {/* Player bar */}
-      <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2 mt-1">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
-            <span className="text-base">{playerData.symbol}</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium leading-tight">{playerData.name}</span>
-            <CapturedPieces pieces={playerData.captured} advantage={playerData.advantage} perspective="bottom" />
-          </div>
-        </div>
-        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-lg font-bold transition-colors ${
-          playerData.isActive ? "bg-ccb-primary/15 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
-        }`}>
-          <Clock className="w-4 h-4" />
-          {playerData.clock}
-        </div>
-      </div>
-
-      {/* Controls */}
-      {!gameEnded && (
-        <div className="flex items-center justify-center gap-3 max-w-[600px] mx-auto mt-3">
-          {showResignConfirm ? (
-            <>
-              <span className="text-sm text-ccb-muted">Resign?</span>
-              <button onClick={handleResign} className="btn bg-ccb-danger text-white px-4 py-2 text-sm">
-                Yes, resign
-              </button>
-              <button onClick={() => setShowResignConfirm(false)} className="btn-secondary text-sm">
-                Cancel
-              </button>
-            </>
-          ) : (
-            <button onClick={() => setShowResignConfirm(true)} className="btn-secondary text-sm">
-              <Flag className="w-4 h-4 mr-1" /> Resign
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-
-  const sidebar = (
-    <div className="flex flex-col gap-3">
-      {/* Status header with controls */}
-      <div className="card flex items-center justify-between">
-        <Link href="/play" className="text-sm text-ccb-muted hover:text-ccb-primary flex items-center gap-1">
-          <ArrowLeft className="w-4 h-4" /> Back
-        </Link>
-        <div className="flex items-center gap-2">
-          <button onClick={toggleSound} className="text-ccb-muted hover:text-ccb-primary transition-colors p-1" title={soundOn ? "Mute" : "Unmute"}>
-            {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-          </button>
-          <BoardThemePicker onThemeChange={setBoardTheme} />
-        </div>
-      </div>
-
-      {/* AI status */}
-      <div className="card flex items-center gap-2">
-        <Bot className="w-4 h-4 text-ccb-primary" />
-        <span className="text-sm text-ccb-muted">{aiThinking ? "Thinking..." : DIFFICULTY_LABELS[difficulty]}</span>
-      </div>
-
-      {/* Opening detection */}
-      {moveHistory.length >= 2 && <OpeningBadge moves={moveHistory} />}
-
-      {/* Move history */}
-      <MoveHistory moves={moveHistory} />
-
-      {/* Footer info */}
-      <div className="text-center text-xs text-ccb-muted">
-        Move {moveCount} · {DIFFICULTY_LABELS[difficulty]} · vs Computer
-      </div>
-
-      {/* Quick reactions */}
-      <QuickReactions position="side" />
-    </div>
-  );
-
   return (
     <>
-      {/* Mobile: stacked. Desktop: two-column */}
-      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start justify-center pb-20 sm:pb-0">
-        <div className="w-full lg:w-[600px] lg:max-w-[600px] shrink-0">{board}</div>
-        <div className="w-full lg:w-[280px] shrink-0">{sidebar}</div>
+      <div className="game-viewport -my-4 sm:-my-6 flex flex-col lg:flex-row lg:items-center lg:justify-center lg:gap-6">
+        {/* ===== Board column ===== */}
+        <div className="relative flex flex-col h-full w-full lg:w-[600px] lg:max-w-[600px] lg:h-auto lg:shrink-0 lg:my-auto">
+          {/* Mobile-only slim top bar */}
+          <div className="lg:hidden shrink-0 flex items-center justify-between px-3 h-11 border-b border-ccb-border">
+            <Link href="/play" className="p-1.5 -ml-1.5 text-ccb-muted hover:text-ccb-primary">
+              <ArrowLeft className="w-5 h-5" />
+            </Link>
+            <span className="text-sm font-medium text-ccb-muted truncate flex items-center gap-1.5">
+              <Bot className="w-3.5 h-3.5" />
+              {aiThinking ? "Thinking..." : DIFFICULTY_LABELS[difficulty]}
+            </span>
+            <button onClick={toggleSound} className="p-1.5 -mr-1.5 text-ccb-muted hover:text-ccb-primary">
+              {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {/* Opponent bar */}
+          <div className="shrink-0 flex items-center justify-between max-w-[600px] mx-auto w-full px-2 py-1.5">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
+                <Bot className="w-4 h-4 text-ccb-muted" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium leading-tight">{opponentData.name}</span>
+                <CapturedPieces pieces={opponentData.captured} advantage={opponentData.advantage} perspective="top" />
+              </div>
+            </div>
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-lg font-bold transition-colors ${
+              opponentData.isActive ? "bg-ccb-primary/15 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
+            }`}>
+              <Clock className="w-4 h-4" />
+              {opponentData.clock}
+            </div>
+          </div>
+
+          {/* Chessboard — flexible, fills remaining space, never forces scroll */}
+          <div ref={boardContainerRef} className="flex-1 min-h-0 flex items-center justify-center px-2 py-1">
+            <div style={{ width: boardSize, height: boardSize }}>
+              <Chessboard options={{
+                position: fen,
+                boardOrientation: isPlayerWhite ? "white" : "black",
+                onPieceDrop: ({ sourceSquare, targetSquare }) => {
+                  if (!targetSquare) return false;
+                  return onDrop(sourceSquare, targetSquare);
+                },
+                allowDragging: !gameEnded,
+                squareStyles: squareStyles,
+                showAnimations: true,
+                animationDurationInMs: 300,
+                showNotation: true,
+                darkSquareNotationStyle: { color: boardTheme.light, fontSize: "10px", fontWeight: 600 },
+                lightSquareNotationStyle: { color: boardTheme.dark, fontSize: "10px", fontWeight: 600 },
+                onPieceClick: handlePieceClick,
+                onSquareClick: handleSquareClick,
+                darkSquareStyle: { backgroundColor: boardTheme.dark },
+                lightSquareStyle: { backgroundColor: boardTheme.light },
+                boardStyle: { borderRadius: "8px", overflow: "hidden" },
+              }} />
+            </div>
+          </div>
+
+          {/* Player bar */}
+          <div className="shrink-0 flex items-center justify-between max-w-[600px] mx-auto w-full px-2 py-1.5">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
+                <span className="text-base">{playerData.symbol}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium leading-tight">{playerData.name}</span>
+                <CapturedPieces pieces={playerData.captured} advantage={playerData.advantage} perspective="bottom" />
+              </div>
+            </div>
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-lg font-bold transition-colors ${
+              playerData.isActive ? "bg-ccb-primary/15 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
+            }`}>
+              <Clock className="w-4 h-4" />
+              {playerData.clock}
+            </div>
+          </div>
+
+          {/* Desktop-only resign control */}
+          {!gameEnded && (
+            <div className="hidden lg:flex items-center justify-center gap-3 max-w-[600px] mx-auto mt-2 shrink-0">
+              {showResignConfirm ? (
+                <>
+                  <span className="text-sm text-ccb-muted">Resign?</span>
+                  <button onClick={handleResign} className="btn bg-ccb-danger text-white px-4 py-2 text-sm">
+                    Yes, resign
+                  </button>
+                  <button onClick={() => setShowResignConfirm(false)} className="btn-secondary text-sm">
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button onClick={() => setShowResignConfirm(true)} className="btn-secondary text-sm">
+                  <Flag className="w-4 h-4 mr-1" /> Resign
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Mobile-only bottom toolbar */}
+          <div className="lg:hidden shrink-0 border-t border-ccb-border" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+            {showResignConfirm ? (
+              <div className="flex items-center justify-center gap-3 h-14">
+                <span className="text-sm text-ccb-muted">Resign?</span>
+                <button onClick={handleResign} className="btn bg-ccb-danger text-white px-4 py-1.5 text-sm">
+                  Yes
+                </button>
+                <button onClick={() => setShowResignConfirm(false)} className="btn-secondary text-sm px-4 py-1.5">
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-around h-14">
+                <button onClick={() => toggleSheet("moves")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "moves" ? "text-ccb-primary" : "text-ccb-muted"}`}>
+                  <List className="w-5 h-5" /><span className="text-[10px]">Moves</span>
+                </button>
+                <button onClick={() => toggleSheet("reactions")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "reactions" ? "text-ccb-primary" : "text-ccb-muted"}`}>
+                  <Smile className="w-5 h-5" /><span className="text-[10px]">React</span>
+                </button>
+                <button onClick={() => toggleSheet("theme")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "theme" ? "text-ccb-primary" : "text-ccb-muted"}`}>
+                  <Palette className="w-5 h-5" /><span className="text-[10px]">Board</span>
+                </button>
+                <button
+                  onClick={() => !gameEnded && setShowResignConfirm(true)}
+                  disabled={gameEnded}
+                  className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-danger disabled:opacity-40"
+                >
+                  <Flag className="w-5 h-5" /><span className="text-[10px]">Resign</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Mobile bottom sheet — Moves / Reactions / Theme */}
+          {activeSheet && (
+            <div className="lg:hidden absolute inset-x-2 bottom-16 z-20 max-h-[45%] rounded-xl border border-ccb-border bg-ccb-card shadow-2xl animate-sheet-up flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-ccb-border shrink-0">
+                <span className="text-sm font-medium">
+                  {activeSheet === "moves" ? "Move History" : activeSheet === "reactions" ? "Quick Reactions" : "Board Theme"}
+                </span>
+                <button onClick={() => setActiveSheet(null)} className="text-ccb-muted hover:text-ccb-primary p-1">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-2 no-scrollbar">
+                {activeSheet === "moves" && (
+                  moveHistory.length >= 2 && <div className="mb-2"><OpeningBadge moves={moveHistory} /></div>
+                )}
+                {activeSheet === "moves" && <MoveHistory moves={moveHistory} />}
+                {activeSheet === "reactions" && <QuickReactions position="bottom" />}
+                {activeSheet === "theme" && <BoardThemePicker inline onThemeChange={setBoardTheme} />}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ===== Desktop-only sidebar ===== */}
+        <div className="hidden lg:flex lg:flex-col lg:w-[280px] lg:shrink-0 lg:h-full lg:py-2 gap-3">
+          <div className="flex flex-col gap-3 h-full overflow-y-auto no-scrollbar">
+            {/* Status header with controls */}
+            <div className="card flex items-center justify-between shrink-0">
+              <Link href="/play" className="text-sm text-ccb-muted hover:text-ccb-primary flex items-center gap-1">
+                <ArrowLeft className="w-4 h-4" /> Back
+              </Link>
+              <div className="flex items-center gap-2">
+                <button onClick={toggleSound} className="text-ccb-muted hover:text-ccb-primary transition-colors p-1" title={soundOn ? "Mute" : "Unmute"}>
+                  {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                </button>
+                <BoardThemePicker onThemeChange={setBoardTheme} />
+              </div>
+            </div>
+
+            {/* AI status */}
+            <div className="card flex items-center gap-2 shrink-0">
+              <Bot className="w-4 h-4 text-ccb-primary" />
+              <span className="text-sm text-ccb-muted">{aiThinking ? "Thinking..." : DIFFICULTY_LABELS[difficulty]}</span>
+            </div>
+
+            {/* Opening detection */}
+            {moveHistory.length >= 2 && <div className="shrink-0"><OpeningBadge moves={moveHistory} /></div>}
+
+            {/* Move history */}
+            <div className="flex-1 min-h-0">
+              <MoveHistory moves={moveHistory} />
+            </div>
+
+            {/* Footer info */}
+            <div className="text-center text-xs text-ccb-muted shrink-0">
+              Move {moveCount} · {DIFFICULTY_LABELS[difficulty]} · vs Computer
+            </div>
+
+            {/* Quick reactions */}
+            <div className="shrink-0">
+              <QuickReactions position="side" />
+            </div>
+          </div>
+        </div>
       </div>
 
       <PromotionDialog

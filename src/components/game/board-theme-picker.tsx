@@ -6,9 +6,11 @@ import { BOARD_THEMES, getStoredBoardTheme, storeBoardTheme, type BoardTheme } f
 
 interface BoardThemePickerProps {
   onThemeChange: (theme: BoardTheme) => void;
+  /** Render just the theme grid (no dropdown button/popover) — for embedding in a sheet/panel */
+  inline?: boolean;
 }
 
-export default function BoardThemePicker({ onThemeChange }: BoardThemePickerProps) {
+export default function BoardThemePicker({ onThemeChange, inline = false }: BoardThemePickerProps) {
   const [current, setCurrent] = useState<BoardTheme>(BOARD_THEMES[0]);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -20,12 +22,13 @@ export default function BoardThemePicker({ onThemeChange }: BoardThemePickerProp
   }, [onThemeChange]);
 
   useEffect(() => {
+    if (inline) return;
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  }, [inline]);
 
   const handleSelect = (theme: BoardTheme) => {
     setCurrent(theme);
@@ -33,6 +36,30 @@ export default function BoardThemePicker({ onThemeChange }: BoardThemePickerProp
     onThemeChange(theme);
     setOpen(false);
   };
+
+  if (inline) {
+    return (
+      <div className="space-y-1">
+        <div className="text-xs text-ccb-muted mb-2 px-1">Board Theme</div>
+        {BOARD_THEMES.map((theme) => (
+          <button
+            key={theme.id}
+            onClick={() => handleSelect(theme)}
+            className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-ccb-surface transition-colors"
+          >
+            <span className="text-sm">{theme.label}</span>
+            <span className="flex items-center gap-1.5">
+              <span className="flex">
+                <span className="w-4 h-4 rounded-sm" style={{ backgroundColor: theme.light, border: "1px solid rgba(255,255,255,0.15)" }} />
+                <span className="w-4 h-4 rounded-sm" style={{ backgroundColor: theme.dark }} />
+              </span>
+              {current.id === theme.id && <Check className="w-3.5 h-3.5 text-ccb-primary" />}
+            </span>
+          </button>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div ref={ref} className="relative">

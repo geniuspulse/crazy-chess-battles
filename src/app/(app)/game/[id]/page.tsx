@@ -56,7 +56,7 @@ export default async function GamePage({
   };
 
   return (
-    <div className="space-y-6 pb-20 sm:pb-0">
+    <>
       <GameClient
         gameId={id}
         initialGame={gameState}
@@ -65,6 +65,6 @@ export default async function GamePage({
         whiteName={whiteProfile.data?.display_name || whiteProfile.data?.username || "White"}
         blackName={blackProfile.data?.display_name || blackProfile.data?.username || "Black"}
       />
-    </div>
+    </>
   );
 }

@@ -10,10 +10,10 @@ export type GameOutcome = "win" | "loss" | "draw";
 interface VictoryOverlayProps {
   visible: boolean;
   outcome: GameOutcome;
-  reasonLabel: string; // "Checkmate", "Resignation", "Time out", "Stalemate", "Draw"
+  reasonLabel: string;
   ratingChange?: number | null;
   moveCount: number;
-  subtitle: string; // e.g. "Medium Bot · vs Computer" or "5+0 · Ranked"
+  subtitle: string;
   onNewGame?: () => void;
   newGameLabel?: string;
   lobbyHref?: string;
@@ -31,14 +31,19 @@ export default function VictoryOverlay({
   lobbyHref = "/play",
 }: VictoryOverlayProps) {
   const [mounted, setMounted] = useState(false);
+  const [showButtons, setShowButtons] = useState(false);
 
   useEffect(() => {
     if (visible) {
-      // trigger enter animation on next tick
-      const t = setTimeout(() => setMounted(true), 20);
-      return () => clearTimeout(t);
+      const t1 = setTimeout(() => setMounted(true), 20);
+      const t2 = setTimeout(() => setShowButtons(true), 500);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
     }
     setMounted(false);
+    setShowButtons(false);
   }, [visible]);
 
   if (!visible) return null;
@@ -47,15 +52,24 @@ export default function VictoryOverlay({
   const isDraw = outcome === "draw";
   const isLoss = outcome === "loss";
 
-  const headline = isWin ? "Victory!" : isDraw ? "Draw" : "Defeat";
-  const message = isWin ? "You won" : isDraw ? "Game drawn" : "You lost";
+  // Color scheme per outcome
+  const accent = isWin ? "#a78bfa" : isDraw ? "#94a3b8" : "#f87171";
+  const accentBg = isWin ? "rgba(167,139,250,0.12)" : isDraw ? "rgba(148,163,184,0.1)" : "rgba(248,113,113,0.1)";
+  const accentBorder = isWin ? "rgba(167,139,250,0.3)" : isDraw ? "rgba(148,163,184,0.2)" : "rgba(248,113,113,0.25)";
+
+  const headline = isWin ? "Victory" : isDraw ? "Draw" : "Defeat";
+  const headline2 = isWin ? "You Won" : isDraw ? "Game Drawn" : "You Lost";
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center transition-opacity duration-300 ${
+      className={`fixed inset-0 z-50 flex items-center justify-center transition-opacity duration-400 ${
         mounted ? "opacity-100" : "opacity-0"
       }`}
-      style={{ backgroundColor: "rgba(6, 6, 12, 0.72)", backdropFilter: "blur(4px)" }}
+      style={{
+        backgroundColor: "rgba(6,6,12,0.85)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
+      }}
     >
       {/* Fireworks layer */}
       {(isWin || isDraw) && (
@@ -64,73 +78,105 @@ export default function VictoryOverlay({
 
       {/* Card */}
       <div
-        className={`relative w-[90%] max-w-sm rounded-2xl border p-6 sm:p-8 text-center shadow-2xl transition-all duration-500 ease-out ${
-          mounted ? "translate-y-0 scale-100 opacity-100" : "-translate-y-10 scale-90 opacity-0"
-        } ${
-          isWin
-            ? "bg-gradient-to-b from-ccb-primary/20 to-ccb-card border-ccb-primary/40"
-            : isDraw
-            ? "bg-ccb-card border-ccb-border"
-            : "bg-gradient-to-b from-ccb-danger/10 to-ccb-card border-ccb-danger/30"
+        className={`relative w-[88%] max-w-[340px] rounded-2xl border p-6 text-center shadow-2xl transition-all duration-600 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          mounted ? "translate-y-0 scale-100 opacity-100" : "-translate-y-8 scale-95 opacity-0"
         }`}
+        style={{
+          backgroundColor: "rgba(15,15,22,0.95)",
+          borderColor: accentBorder,
+          boxShadow: `0 20px 60px -10px ${accentBg}, 0 0 0 1px ${accentBorder}`,
+        }}
       >
-        {/* Icon badge */}
+        {/* Accent ring at top */}
         <div
-          className={`mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full ${
-            isWin
-              ? "bg-ccb-primary/15 animate-pulse-glow"
-              : isDraw
-              ? "bg-ccb-surface"
-              : "bg-ccb-danger/10"
-          }`}
+          className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full flex items-center justify-center transition-transform duration-500"
+          style={{
+            backgroundColor: "rgba(15,15,22,0.95)",
+            border: `2px solid ${accent}`,
+            boxShadow: `0 0 24px ${accentBg}`,
+          }}
         >
-          {isWin && <Trophy className="h-10 w-10 text-ccb-primary" />}
-          {isDraw && <Handshake className="h-10 w-10 text-ccb-muted" />}
-          {isLoss && <Frown className="h-10 w-10 text-ccb-danger" />}
+          {isWin && <Trophy className="h-7 w-7" style={{ color: accent }} />}
+          {isDraw && <Handshake className="h-7 w-7" style={{ color: accent }} />}
+          {isLoss && <Frown className="h-7 w-7" style={{ color: accent }} />}
         </div>
 
-        <h2
-          className={`text-3xl font-extrabold tracking-tight mb-1 ${
-            isWin ? "text-ccb-primary" : isDraw ? "text-ccb-text" : "text-ccb-danger"
-          }`}
-        >
-          {headline}
-        </h2>
-        <p className="text-sm text-ccb-muted mb-1">{reasonLabel}</p>
-        <p className="text-base font-medium mb-4">{message}</p>
-
-        {ratingChange !== null && ratingChange !== undefined && (
-          <div
-            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold mb-4 ${
-              ratingChange >= 0
-                ? "bg-ccb-success/10 text-ccb-success"
-                : "bg-ccb-danger/10 text-ccb-danger"
-            }`}
+        {/* Headline */}
+        <div className="mt-6">
+          <h2
+            className="text-2xl font-extrabold tracking-tight leading-none"
+            style={{ color: accent }}
           >
-            {ratingChange >= 0 ? "+" : ""}
-            {ratingChange} rating
-          </div>
-        )}
-
-        <div className="text-xs text-ccb-muted mb-6">
-          Move {moveCount} · {subtitle}
+            {headline}
+          </h2>
+          <p className="text-sm text-white/50 mt-1.5 font-medium">{headline2}</p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-2">
+        {/* Divider */}
+        <div
+          className="my-4 h-px"
+          style={{ background: `linear-gradient(90deg, transparent, ${accentBorder}, transparent)` }}
+        />
+
+        {/* Stats row */}
+        <div className="flex items-center justify-center gap-6 mb-4">
+          {/* Reason */}
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold mb-0.5">Result</span>
+            <span className="text-sm font-semibold text-white/80">{reasonLabel}</span>
+          </div>
+          {/* Rating change */}
+          {ratingChange !== null && ratingChange !== undefined && (
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold mb-0.5">Rating</span>
+              <span
+                className="text-sm font-bold"
+                style={{ color: ratingChange >= 0 ? "#4ade80" : "#f87171" }}
+              >
+                {ratingChange >= 0 ? "+" : ""}{ratingChange}
+              </span>
+            </div>
+          )}
+          {/* Move count */}
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold mb-0.5">Moves</span>
+            <span className="text-sm font-semibold text-white/80">{moveCount}</span>
+          </div>
+        </div>
+
+        {/* Subtitle */}
+        <p className="text-xs text-white/35 mb-5">{subtitle}</p>
+
+        {/* Buttons */}
+        <div
+          className={`flex flex-col gap-2 transition-all duration-400 ${
+            showButtons ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
+          }`}
+        >
           {onNewGame && (
             <button
               onClick={onNewGame}
-              className="btn-primary flex-1 flex items-center justify-center gap-2"
+              className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]"
+              style={{
+                backgroundColor: accent,
+                color: "#0a0a0f",
+                boxShadow: `0 4px 20px ${accentBg}`,
+              }}
             >
               <RefreshCw className="w-4 h-4" /> {newGameLabel}
             </button>
           )}
           <Link
             href={lobbyHref}
-            className="btn-secondary flex-1 flex items-center justify-center gap-2"
+            className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+            style={{
+              backgroundColor: "rgba(255,255,255,0.06)",
+              color: "rgba(255,255,255,0.7)",
+              border: "1px solid rgba(255,255,255,0.08)",
+            }}
           >
             {onNewGame ? <Home className="w-4 h-4" /> : <Swords className="w-4 h-4" />}
-            {onNewGame ? "Lobby" : "Play Again"}
+            {onNewGame ? "Back to Lobby" : "Play Again"}
           </Link>
         </div>
       </div>

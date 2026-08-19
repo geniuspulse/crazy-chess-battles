@@ -15,6 +15,9 @@ interface Profile {
 
 export default function AppNav({ profile }: { profile: Profile | null }) {
   const pathname = usePathname();
+  // Game screens run a fixed, non-scrolling "app mode" layout (like chess.com) —
+  // hide the mobile chrome (header + bottom tab bar) so the game gets the full viewport.
+  const isGameRoute = pathname.startsWith("/game/") || pathname.startsWith("/play/computer");
 
   const navItems = [
     { href: "/dashboard", label: "Home", icon: Home },
@@ -90,7 +93,8 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
         </div>
       </nav>
 
-      {/* Mobile header — compact, just logo + rating + profile */}
+      {/* Mobile header — compact, just logo + rating + profile. Hidden on game screens. */}
+      {!isGameRoute && (
       <header className="sm:hidden sticky top-0 z-50 border-b border-ccb-border bg-ccb-dark/90 backdrop-blur-md">
         <div className="flex items-center justify-between px-4 h-12">
           <Link href="/dashboard" className="flex items-center gap-2">
@@ -115,8 +119,10 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
           </div>
         </div>
       </header>
+      )}
 
-      {/* Mobile bottom nav — fixed, safe-area aware, won't disappear on scroll */}
+      {/* Mobile bottom nav — fixed, safe-area aware, won't disappear on scroll. Hidden on game screens. */}
+      {!isGameRoute && (
       <nav 
         className="fixed bottom-0 left-0 right-0 z-[100] border-t border-ccb-border bg-ccb-surface/95 backdrop-blur-md sm:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
@@ -140,6 +146,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
           })}
         </div>
       </nav>
+      )}
     </>
   );
 }

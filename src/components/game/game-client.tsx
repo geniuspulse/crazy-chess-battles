@@ -4,11 +4,13 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
 import { useRealtimeGame, type GameState } from "@/hooks/use-realtime-game";
-import { Clock, Flag, Eye, ArrowLeft, Volume2, VolumeX } from "lucide-react";
+import { Clock, Flag, Eye, ArrowLeft, Volume2, VolumeX, List, Smile, Palette, X } from "lucide-react";
 import Link from "next/link";
 import { getCapturedPieces, getCheckSquare } from "@/lib/game/board-helpers";
 import { playSound, detectMoveSound, setSoundEnabled } from "@/lib/game/sound";
 import { getStoredBoardTheme, type BoardTheme } from "@/lib/game/board-themes";
+import { useBoardSize } from "@/hooks/use-board-size";
+import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import MoveHistory from "./move-history";
 import CapturedPieces from "./captured-pieces";
 import VictoryOverlay, { type GameOutcome } from "./victory-overlay";
@@ -34,6 +36,8 @@ const STATUS_LABELS: Record<string, string> = {
   timeout: "Time out",
 };
 
+type SheetType = "moves" | "reactions" | "theme" | null;
+
 function formatClock(ms: number | null): string {
   if (ms === null || ms === undefined) return "—";
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -58,9 +62,13 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [legalMoveSquares, setLegalMoveSquares] = useState<string[]>([]);
   const [premove, setPremove] = useState<{ from: string; to: string } | null>(null);
+  const [activeSheet, setActiveSheet] = useState<SheetType>(null);
   const lastFenRef = useRef(game.fen);
   const soundPlayedForEnd = useRef(false);
   const prevFenRef = useRef(game.fen);
+  const { containerRef: boardContainerRef, size: boardSize } = useBoardSize(600, 220);
+
+  useLockBodyScroll();
 
   useEffect(() => {
     if (drawOffer === "offer") setOpponentDrawOffer(true);
@@ -80,11 +88,9 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   // Play sounds when FEN changes (opponent moves come via realtime)
   useEffect(() => {
     if (prevFenRef.current !== game.fen && !pendingPromotion) {
-      // Detect what changed by replaying
       try {
         const tempGame = new Chess(prevFenRef.current);
         const nextGame = new Chess(game.fen);
-        // Simple approach: if it's not our move that caused the change, play sound
         const history = nextGame.history({ verbose: true });
         const last = history[history.length - 1];
         if (last) {
@@ -141,20 +147,17 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         boxShadow: "inset 0 0 12px rgba(239,68,68,0.5)",
       };
     }
-    // Legal move hints
     for (const sq of legalMoveSquares) {
       styles[sq] = {
         background: "radial-gradient(circle, rgba(139,92,246,0.25) 22%, transparent 24%)",
       };
     }
-    // Selected square highlight
     if (selectedSquare) {
       styles[selectedSquare] = {
         ...styles[selectedSquare],
         background: "radial-gradient(circle, rgba(139,92,246,0.4) 70%, transparent 72%)",
       };
     }
-    // Premove highlight — amber
     if (premove) {
       styles[premove.from] = {
         ...styles[premove.from],
@@ -260,7 +263,6 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const onDrop = useCallback(
     (sourceSquare: string, targetSquare: string): boolean => {
       if (isSpectator || gameEnded) return false;
-      // If it's our turn, make the real move
       if (myTurn) {
         if (isPromotionMove(sourceSquare, targetSquare)) {
           setPendingPromotion({ from: sourceSquare, to: targetSquare });
@@ -283,7 +285,6 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         makeMove(sourceSquare, targetSquare);
         return true;
       }
-      // Not our turn — set a premove
       if (!targetSquare) return false;
       const game = new Chess(fen);
       const piece = game.get(sourceSquare as any);
@@ -330,8 +331,10 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
     playSound("gameStart");
   }, []);
 
+  const toggleSheet = (sheet: SheetType) => setActiveSheet((prev) => (prev === sheet ? null : sheet));
+
   const renderPlayerBar = (data: { name: string; rating?: number | string | null; symbol: string; captured: string[]; advantage: number; clock: string; isActive: boolean }) => (
-    <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2">
+    <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2 py-1.5">
       <div className="flex items-center gap-2">
         <div className="w-9 h-9 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
           <span className="text-base">{data.symbol}</span>
@@ -358,71 +361,128 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
     const topPlayer = { name: blackName, rating: game.black_rating, captured: captured.black, advantage: -captured.advantage, clock: getLiveClock("black"), isActive: game.turn === "black" && !gameEnded, symbol: "♚" };
     const bottomPlayer = { name: whiteName, rating: game.white_rating, captured: captured.white, advantage: captured.advantage, clock: getLiveClock("white"), isActive: game.turn === "white" && !gameEnded, symbol: "♔" };
 
-    const board = (
-      <div className="w-full">
-        {!connected && (
-          <div className="rounded-lg bg-ccb-surface border border-ccb-border text-ccb-muted px-4 py-2 text-sm text-center max-w-[600px] mx-auto mb-2">
-            Connecting...
-          </div>
-        )}
-        {renderPlayerBar(topPlayer)}
-        <div className="w-full max-w-[600px] aspect-square mx-auto mt-1">
-          <Chessboard options={{
-            position: fen,
-            boardOrientation: "white",
-            onPieceDrop: () => false,
-            allowDragging: false,
-            squareStyles: squareStyles,
-            showAnimations: true,
-            animationDurationInMs: 300,
-            showNotation: true,
-            darkSquareNotationStyle: { color: boardTheme.light, fontSize: "10px", fontWeight: 600 },
-            lightSquareNotationStyle: { color: boardTheme.dark, fontSize: "10px", fontWeight: 600 },
-            darkSquareStyle: { backgroundColor: boardTheme.dark },
-            lightSquareStyle: { backgroundColor: boardTheme.light },
-            boardStyle: { borderRadius: "8px", overflow: "hidden" },
-          }} />
-        </div>
-        {renderPlayerBar(bottomPlayer)}
-      </div>
-    );
-
-    const sidebar = (
-      <div className="flex flex-col gap-3">
-        <div className="card flex items-center justify-between">
-          <Link href="/play" className="text-sm text-ccb-muted hover:text-ccb-primary flex items-center gap-1">
-            <ArrowLeft className="w-4 h-4" /> Back
-          </Link>
-          <div className="flex items-center gap-2">
-            <button onClick={toggleSound} className="text-ccb-muted hover:text-ccb-primary transition-colors p-1">
-              {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-            </button>
-            <div className="flex items-center gap-2 text-sm text-ccb-muted">
-              <Eye className="w-4 h-4" />
-              <span>Spectating</span>
-            </div>
-            <BoardThemePicker onThemeChange={setBoardTheme} />
-          </div>
-        </div>
-        {/* Opening detection */}
-      {moveHistory.length >= 2 && <OpeningBadge moves={moveHistory} />}
-
-      <MoveHistory moves={moveHistory} />
-        <div className="text-center text-xs text-ccb-muted">
-          Move {game.move_count} · {game.time_control} · {game.rated ? "Ranked" : "Casual"}
-        </div>
-
-        {/* Quick reactions */}
-        <QuickReactions position="side" />
-      </div>
-    );
-
     return (
       <>
-        <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start justify-center">
-          <div className="w-full lg:w-[600px] shrink-0">{board}</div>
-          <div className="w-full lg:w-[280px] shrink-0">{sidebar}</div>
+        <div className="game-viewport -my-4 sm:-my-6 flex flex-col lg:flex-row lg:items-center lg:justify-center lg:gap-6">
+          {/* ===== Board column ===== */}
+          <div className="relative flex flex-col h-full w-full lg:w-[600px] lg:max-w-[600px] lg:h-auto lg:shrink-0 lg:my-auto">
+            {/* Mobile-only slim top bar */}
+            <div className="lg:hidden shrink-0 flex items-center justify-between px-3 h-11 border-b border-ccb-border">
+              <Link href="/play" className="p-1.5 -ml-1.5 text-ccb-muted hover:text-ccb-primary">
+                <ArrowLeft className="w-5 h-5" />
+              </Link>
+              <span className="text-sm font-medium text-ccb-muted truncate flex items-center gap-1.5">
+                <Eye className="w-3.5 h-3.5" /> Spectating
+              </span>
+              <button onClick={toggleSound} className="p-1.5 -mr-1.5 text-ccb-muted hover:text-ccb-primary">
+                {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              </button>
+            </div>
+
+            {!connected && (
+              <div className="shrink-0 rounded-lg bg-ccb-surface border border-ccb-border text-ccb-muted px-4 py-1.5 text-xs text-center max-w-[600px] mx-auto w-full mt-1">
+                Connecting...
+              </div>
+            )}
+
+            {renderPlayerBar(topPlayer)}
+
+            <div ref={boardContainerRef} className="flex-1 min-h-0 flex items-center justify-center px-2 py-1">
+              <div style={{ width: boardSize, height: boardSize }}>
+                <Chessboard options={{
+                  position: fen,
+                  boardOrientation: "white",
+                  onPieceDrop: () => false,
+                  allowDragging: false,
+                  squareStyles: squareStyles,
+                  showAnimations: true,
+                  animationDurationInMs: 300,
+                  showNotation: true,
+                  darkSquareNotationStyle: { color: boardTheme.light, fontSize: "10px", fontWeight: 600 },
+                  lightSquareNotationStyle: { color: boardTheme.dark, fontSize: "10px", fontWeight: 600 },
+                  darkSquareStyle: { backgroundColor: boardTheme.dark },
+                  lightSquareStyle: { backgroundColor: boardTheme.light },
+                  boardStyle: { borderRadius: "8px", overflow: "hidden" },
+                }} />
+              </div>
+            </div>
+
+            {renderPlayerBar(bottomPlayer)}
+
+            {/* Mobile-only bottom toolbar */}
+            <div className="lg:hidden shrink-0 border-t border-ccb-border" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+              <div className="flex items-center justify-around h-14">
+                <button onClick={() => toggleSheet("moves")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "moves" ? "text-ccb-primary" : "text-ccb-muted"}`}>
+                  <List className="w-5 h-5" /><span className="text-[10px]">Moves</span>
+                </button>
+                <button onClick={() => toggleSheet("reactions")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "reactions" ? "text-ccb-primary" : "text-ccb-muted"}`}>
+                  <Smile className="w-5 h-5" /><span className="text-[10px]">React</span>
+                </button>
+                <button onClick={() => toggleSheet("theme")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "theme" ? "text-ccb-primary" : "text-ccb-muted"}`}>
+                  <Palette className="w-5 h-5" /><span className="text-[10px]">Board</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Mobile bottom sheet */}
+            {activeSheet && (
+              <div className="lg:hidden absolute inset-x-2 bottom-16 z-20 max-h-[45%] rounded-xl border border-ccb-border bg-ccb-card shadow-2xl animate-sheet-up flex flex-col overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-ccb-border shrink-0">
+                  <span className="text-sm font-medium">
+                    {activeSheet === "moves" ? "Move History" : activeSheet === "reactions" ? "Quick Reactions" : "Board Theme"}
+                  </span>
+                  <button onClick={() => setActiveSheet(null)} className="text-ccb-muted hover:text-ccb-primary p-1">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-2 no-scrollbar">
+                  {activeSheet === "moves" && (
+                    moveHistory.length >= 2 && <div className="mb-2"><OpeningBadge moves={moveHistory} /></div>
+                  )}
+                  {activeSheet === "moves" && <MoveHistory moves={moveHistory} />}
+                  {activeSheet === "reactions" && <QuickReactions position="bottom" />}
+                  {activeSheet === "theme" && <BoardThemePicker inline onThemeChange={setBoardTheme} />}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ===== Desktop-only sidebar ===== */}
+          <div className="hidden lg:flex lg:flex-col lg:w-[280px] lg:shrink-0 lg:h-full lg:py-2 gap-3">
+            <div className="flex flex-col gap-3 h-full overflow-y-auto no-scrollbar">
+              <div className="card flex items-center justify-between shrink-0">
+                <Link href="/play" className="text-sm text-ccb-muted hover:text-ccb-primary flex items-center gap-1">
+                  <ArrowLeft className="w-4 h-4" /> Back
+                </Link>
+                <div className="flex items-center gap-2">
+                  <button onClick={toggleSound} className="text-ccb-muted hover:text-ccb-primary transition-colors p-1">
+                    {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                  </button>
+                  <div className="flex items-center gap-2 text-sm text-ccb-muted">
+                    <Eye className="w-4 h-4" />
+                    <span>Spectating</span>
+                  </div>
+                  <BoardThemePicker onThemeChange={setBoardTheme} />
+                </div>
+              </div>
+
+              {moveHistory.length >= 2 && <div className="shrink-0"><OpeningBadge moves={moveHistory} /></div>}
+
+              <div className="flex-1 min-h-0">
+                <MoveHistory moves={moveHistory} />
+              </div>
+
+              <div className="text-center text-xs text-ccb-muted shrink-0">
+                Move {game.move_count} · {game.time_control} · {game.rated ? "Ranked" : "Casual"}
+              </div>
+
+              <div className="shrink-0">
+                <QuickReactions position="side" />
+              </div>
+            </div>
+          </div>
         </div>
+
         <VictoryOverlay
           visible={gameEnded}
           outcome={(game.winner === null ? "draw" : "win") as GameOutcome}
@@ -444,103 +504,179 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
     ? { name: "You", rating: game.white_rating, captured: captured.white, advantage: captured.advantage, clock: getLiveClock("white"), isActive: myTurn && !gameEnded, symbol: "♔" }
     : { name: "You", rating: game.black_rating, captured: captured.black, advantage: -captured.advantage, clock: getLiveClock("black"), isActive: myTurn && !gameEnded, symbol: "♚" };
 
-  const board = (
-    <div className="w-full">
-      {!connected && (
-        <div className="rounded-lg bg-ccb-danger/10 border border-ccb-danger/30 text-ccb-danger px-4 py-2 text-sm text-center max-w-[600px] mx-auto mb-2">
-          Reconnecting to game...
-        </div>
-      )}
-      {error && (
-        <div className="rounded-lg bg-ccb-danger/10 border border-ccb-danger/30 text-ccb-danger px-4 py-2 text-sm text-center max-w-[600px] mx-auto mb-2">
-          {error}
-        </div>
-      )}
-
-      {renderPlayerBar(opponentData)}
-
-      <div className="w-full max-w-[600px] aspect-square mx-auto mt-1">
-        <Chessboard options={{
-          position: fen,
-          boardOrientation: isWhite ? "white" : "black",
-          onPieceDrop: ({ sourceSquare, targetSquare }) => {
-            if (!targetSquare) return false;
-            return onDrop(sourceSquare, targetSquare);
-          },
-          allowDragging: !gameEnded && !isSpectator,
-          squareStyles: squareStyles,
-          showAnimations: true,
-          animationDurationInMs: 300,
-          showNotation: true,
-          darkSquareNotationStyle: { color: boardTheme.light, fontSize: "10px", fontWeight: 600 },
-          lightSquareNotationStyle: { color: boardTheme.dark, fontSize: "10px", fontWeight: 600 },
-          onPieceClick: handlePieceClick,
-          onSquareClick: handleSquareClick,
-          darkSquareStyle: { backgroundColor: boardTheme.dark },
-          lightSquareStyle: { backgroundColor: boardTheme.light },
-          boardStyle: { borderRadius: "8px", overflow: "hidden" },
-        }} />
-      </div>
-
-      {renderPlayerBar(playerData)}
-
-      {/* Controls */}
-      {!gameEnded && (
-        <div className="flex items-center justify-center gap-3 max-w-[600px] mx-auto mt-3">
-          {showResignConfirm ? (
-            <>
-              <span className="text-sm text-ccb-muted">Resign?</span>
-              <button onClick={handleResign} className="btn bg-ccb-danger text-white px-4 py-2 text-sm">
-                Yes, resign
-              </button>
-              <button onClick={() => setShowResignConfirm(false)} className="btn-secondary text-sm">
-                Cancel
-              </button>
-            </>
-          ) : (
-            <button onClick={() => setShowResignConfirm(true)} className="btn-secondary text-sm">
-              <Flag className="w-4 h-4 mr-1" /> Resign
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-
-  const sidebar = (
-    <div className="flex flex-col gap-3">
-      <div className="card flex items-center justify-between">
-        <Link href="/play" className="text-sm text-ccb-muted hover:text-ccb-primary flex items-center gap-1">
-          <ArrowLeft className="w-4 h-4" /> Back
-        </Link>
-        <div className="flex items-center gap-2">
-          <button onClick={toggleSound} className="text-ccb-muted hover:text-ccb-primary transition-colors p-1">
-            {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-          </button>
-          <BoardThemePicker onThemeChange={setBoardTheme} />
-        </div>
-      </div>
-      <div className="card flex items-center justify-between">
-        <div className="text-xs text-ccb-muted">
-          {game.time_control} · {game.rated ? "Ranked" : "Casual"}
-        </div>
-      </div>
-      <MoveHistory moves={moveHistory} />
-      <div className="text-center text-xs text-ccb-muted">
-        Move {game.move_count} · {game.time_control}
-      </div>
-
-      {/* Quick reactions */}
-      <QuickReactions position="side" />
-    </div>
-  );
-
   return (
     <>
-      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start justify-center">
-        <div className="w-full lg:w-[600px] shrink-0">{board}</div>
-        <div className="w-full lg:w-[280px] shrink-0">{sidebar}</div>
+      <div className="game-viewport -my-4 sm:-my-6 flex flex-col lg:flex-row lg:items-center lg:justify-center lg:gap-6">
+        {/* ===== Board column ===== */}
+        <div className="relative flex flex-col h-full w-full lg:w-[600px] lg:max-w-[600px] lg:h-auto lg:shrink-0 lg:my-auto">
+          {/* Mobile-only slim top bar */}
+          <div className="lg:hidden shrink-0 flex items-center justify-between px-3 h-11 border-b border-ccb-border">
+            <Link href="/play" className="p-1.5 -ml-1.5 text-ccb-muted hover:text-ccb-primary">
+              <ArrowLeft className="w-5 h-5" />
+            </Link>
+            <span className="text-sm font-medium text-ccb-muted truncate">
+              {game.time_control} · {game.rated ? "Ranked" : "Casual"}
+            </span>
+            <button onClick={toggleSound} className="p-1.5 -mr-1.5 text-ccb-muted hover:text-ccb-primary">
+              {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {!connected && (
+            <div className="shrink-0 rounded-lg bg-ccb-danger/10 border border-ccb-danger/30 text-ccb-danger px-4 py-1.5 text-xs text-center max-w-[600px] mx-auto w-full mt-1">
+              Reconnecting to game...
+            </div>
+          )}
+          {error && (
+            <div className="shrink-0 rounded-lg bg-ccb-danger/10 border border-ccb-danger/30 text-ccb-danger px-4 py-1.5 text-xs text-center max-w-[600px] mx-auto w-full mt-1">
+              {error}
+            </div>
+          )}
+
+          {renderPlayerBar(opponentData)}
+
+          <div ref={boardContainerRef} className="flex-1 min-h-0 flex items-center justify-center px-2 py-1">
+            <div style={{ width: boardSize, height: boardSize }}>
+              <Chessboard options={{
+                position: fen,
+                boardOrientation: isWhite ? "white" : "black",
+                onPieceDrop: ({ sourceSquare, targetSquare }) => {
+                  if (!targetSquare) return false;
+                  return onDrop(sourceSquare, targetSquare);
+                },
+                allowDragging: !gameEnded && !isSpectator,
+                squareStyles: squareStyles,
+                showAnimations: true,
+                animationDurationInMs: 300,
+                showNotation: true,
+                darkSquareNotationStyle: { color: boardTheme.light, fontSize: "10px", fontWeight: 600 },
+                lightSquareNotationStyle: { color: boardTheme.dark, fontSize: "10px", fontWeight: 600 },
+                onPieceClick: handlePieceClick,
+                onSquareClick: handleSquareClick,
+                darkSquareStyle: { backgroundColor: boardTheme.dark },
+                lightSquareStyle: { backgroundColor: boardTheme.light },
+                boardStyle: { borderRadius: "8px", overflow: "hidden" },
+              }} />
+            </div>
+          </div>
+
+          {renderPlayerBar(playerData)}
+
+          {/* Desktop-only resign control */}
+          {!gameEnded && (
+            <div className="hidden lg:flex items-center justify-center gap-3 max-w-[600px] mx-auto mt-2 shrink-0">
+              {showResignConfirm ? (
+                <>
+                  <span className="text-sm text-ccb-muted">Resign?</span>
+                  <button onClick={handleResign} className="btn bg-ccb-danger text-white px-4 py-2 text-sm">
+                    Yes, resign
+                  </button>
+                  <button onClick={() => setShowResignConfirm(false)} className="btn-secondary text-sm">
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button onClick={() => setShowResignConfirm(true)} className="btn-secondary text-sm">
+                  <Flag className="w-4 h-4 mr-1" /> Resign
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Mobile-only bottom toolbar */}
+          <div className="lg:hidden shrink-0 border-t border-ccb-border" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+            {showResignConfirm ? (
+              <div className="flex items-center justify-center gap-3 h-14">
+                <span className="text-sm text-ccb-muted">Resign?</span>
+                <button onClick={handleResign} className="btn bg-ccb-danger text-white px-4 py-1.5 text-sm">
+                  Yes
+                </button>
+                <button onClick={() => setShowResignConfirm(false)} className="btn-secondary text-sm px-4 py-1.5">
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-around h-14">
+                <button onClick={() => toggleSheet("moves")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "moves" ? "text-ccb-primary" : "text-ccb-muted"}`}>
+                  <List className="w-5 h-5" /><span className="text-[10px]">Moves</span>
+                </button>
+                <button onClick={() => toggleSheet("reactions")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "reactions" ? "text-ccb-primary" : "text-ccb-muted"}`}>
+                  <Smile className="w-5 h-5" /><span className="text-[10px]">React</span>
+                </button>
+                <button onClick={() => toggleSheet("theme")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "theme" ? "text-ccb-primary" : "text-ccb-muted"}`}>
+                  <Palette className="w-5 h-5" /><span className="text-[10px]">Board</span>
+                </button>
+                <button
+                  onClick={() => !gameEnded && setShowResignConfirm(true)}
+                  disabled={gameEnded}
+                  className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-danger disabled:opacity-40"
+                >
+                  <Flag className="w-5 h-5" /><span className="text-[10px]">Resign</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Mobile bottom sheet */}
+          {activeSheet && (
+            <div className="lg:hidden absolute inset-x-2 bottom-16 z-20 max-h-[45%] rounded-xl border border-ccb-border bg-ccb-card shadow-2xl animate-sheet-up flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-ccb-border shrink-0">
+                <span className="text-sm font-medium">
+                  {activeSheet === "moves" ? "Move History" : activeSheet === "reactions" ? "Quick Reactions" : "Board Theme"}
+                </span>
+                <button onClick={() => setActiveSheet(null)} className="text-ccb-muted hover:text-ccb-primary p-1">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-2 no-scrollbar">
+                {activeSheet === "moves" && (
+                  moveHistory.length >= 2 && <div className="mb-2"><OpeningBadge moves={moveHistory} /></div>
+                )}
+                {activeSheet === "moves" && <MoveHistory moves={moveHistory} />}
+                {activeSheet === "reactions" && <QuickReactions position="bottom" />}
+                {activeSheet === "theme" && <BoardThemePicker inline onThemeChange={setBoardTheme} />}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ===== Desktop-only sidebar ===== */}
+        <div className="hidden lg:flex lg:flex-col lg:w-[280px] lg:shrink-0 lg:h-full lg:py-2 gap-3">
+          <div className="flex flex-col gap-3 h-full overflow-y-auto no-scrollbar">
+            <div className="card flex items-center justify-between shrink-0">
+              <Link href="/play" className="text-sm text-ccb-muted hover:text-ccb-primary flex items-center gap-1">
+                <ArrowLeft className="w-4 h-4" /> Back
+              </Link>
+              <div className="flex items-center gap-2">
+                <button onClick={toggleSound} className="text-ccb-muted hover:text-ccb-primary transition-colors p-1">
+                  {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                </button>
+                <BoardThemePicker onThemeChange={setBoardTheme} />
+              </div>
+            </div>
+            <div className="card flex items-center justify-between shrink-0">
+              <div className="text-xs text-ccb-muted">
+                {game.time_control} · {game.rated ? "Ranked" : "Casual"}
+              </div>
+            </div>
+
+            {moveHistory.length >= 2 && <div className="shrink-0"><OpeningBadge moves={moveHistory} /></div>}
+
+            <div className="flex-1 min-h-0">
+              <MoveHistory moves={moveHistory} />
+            </div>
+
+            <div className="text-center text-xs text-ccb-muted shrink-0">
+              Move {game.move_count} · {game.time_control}
+            </div>
+
+            <div className="shrink-0">
+              <QuickReactions position="side" />
+            </div>
+          </div>
+        </div>
       </div>
+
       <PromotionDialog
         visible={!!pendingPromotion}
         color={isWhite ? "white" : "black"}
