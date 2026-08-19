@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
-import { Clock, Flag, ArrowLeft, Bot } from "lucide-react";
+import { Clock, Flag, ArrowLeft, Bot, Home } from "lucide-react";
 import Link from "next/link";
 import { getBestMove, type AIDifficulty } from "@/lib/game/chess-ai";
+import { getCapturedPieces, getCheckSquare } from "@/lib/game/board-helpers";
+import MoveHistory from "./move-history";
+import CapturedPieces from "./captured-pieces";
 import VictoryOverlay, { type GameOutcome } from "./victory-overlay";
 
 interface ComputerGameProps {
@@ -38,12 +41,14 @@ function formatClock(ms: number | null): string {
 }
 
 export default function ComputerGame({ difficulty, playerColor, initialMinutes, incrementSeconds }: ComputerGameProps) {
-  const [chess] = useState(() => new Chess());
-  const [fen, setFen] = useState(chess.fen());
+  const chessRef = useRef(new Chess());
+  const [fen, setFen] = useState(chessRef.current.fen());
   const [turn, setTurn] = useState<"white" | "black">("white");
   const [status, setStatus] = useState("playing");
   const [winner, setWinner] = useState<string | null>(null);
   const [moveCount, setMoveCount] = useState(0);
+  const [moveHistory, setMoveHistory] = useState<string[]>([]);
+  const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
   const [whiteClock, setWhiteClock] = useState(initialMinutes * 60 * 1000);
   const [blackClock, setBlackClock] = useState(initialMinutes * 60 * 1000);
   const [lastMoveAt, setLastMoveAt] = useState(Date.now());
@@ -54,8 +59,30 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   const isPlayerWhite = playerColor === "white";
   const isPlayerTurn = (isPlayerWhite && turn === "white") || (!isPlayerWhite && turn === "black");
   const gameEnded = status !== "playing";
-
   const aiColor = isPlayerWhite ? "black" : "white";
+
+  // Derived: captured pieces, check square, board highlights
+  const captured = useMemo(() => getCapturedPieces(fen), [fen]);
+  const checkSquare = useMemo(() => getCheckSquare(fen), [fen]);
+
+  const squareStyles = useMemo(() => {
+    const styles: Record<string, React.CSSProperties> = {};
+    if (lastMove) {
+      styles[lastMove.from] = {
+        background: "radial-gradient(circle, rgba(139,92,246,0.35) 70%, transparent 72%)",
+      };
+      styles[lastMove.to] = {
+        background: "radial-gradient(circle, rgba(139,92,246,0.35) 70%, transparent 72%)",
+      };
+    }
+    if (checkSquare) {
+      styles[checkSquare] = {
+        background: "radial-gradient(circle, rgba(239,68,68,0.6) 60%, transparent 62%)",
+        boxShadow: "inset 0 0 12px rgba(239,68,68,0.5)",
+      };
+    }
+    return styles;
+  }, [lastMove, checkSquare]);
 
   // Live clock tick
   useEffect(() => {
@@ -80,7 +107,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   // Apply a move
   const applyMove = useCallback((from: string, to: string, promotion: string = "q") => {
     try {
-      const result = chess.move({ from, to, promotion });
+      const result = chessRef.current.move({ from, to, promotion });
       if (result === null) return false;
 
       const now = Date.now();
@@ -94,18 +121,19 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
         setBlackClock(Math.max(0, Math.floor(newBlack)));
       }
 
-      setFen(chess.fen());
-      setTurn(chess.turn() === "w" ? "white" : "black");
-      setMoveCount(chess.history().length);
+      setFen(chessRef.current.fen());
+      setTurn(chessRef.current.turn() === "w" ? "white" : "black");
+      setMoveCount(chessRef.current.history().length);
+      setMoveHistory(chessRef.current.history());
+      setLastMove({ from, to });
       setLastMoveAt(now);
 
-      // Check game over
-      if (chess.isCheckmate()) {
+      if (chessRef.current.isCheckmate()) {
         setStatus("checkmate");
         setWinner(turn);
-      } else if (chess.isStalemate()) {
+      } else if (chessRef.current.isStalemate()) {
         setStatus("stalemate");
-      } else if (chess.isDraw() || chess.isThreefoldRepetition() || chess.isInsufficientMaterial()) {
+      } else if (chessRef.current.isDraw() || chessRef.current.isThreefoldRepetition() || chessRef.current.isInsufficientMaterial()) {
         setStatus("draw");
       }
 
@@ -113,7 +141,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     } catch {
       return false;
     }
-  }, [chess, turn, whiteClock, blackClock, lastMoveAt, incrementSeconds]);
+  }, [turn, whiteClock, blackClock, lastMoveAt, incrementSeconds]);
 
   // AI makes a move
   useEffect(() => {
@@ -125,7 +153,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
         applyMove(move.from, move.to, move.promotion || "q");
       }
       setAiThinking(false);
-    }, 300 + Math.random() * 700); // small delay for realism
+    }, 300 + Math.random() * 700);
     return () => clearTimeout(timeout);
   }, [turn, gameEnded, isPlayerTurn, fen, difficulty, applyMove]);
 
@@ -142,12 +170,14 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   };
 
   const handleNewGame = () => {
-    chess.reset();
-    setFen(chess.fen());
+    chessRef.current.reset();
+    setFen(chessRef.current.fen());
     setTurn("white");
     setStatus("playing");
     setWinner(null);
     setMoveCount(0);
+    setMoveHistory([]);
+    setLastMove(null);
     setWhiteClock(initialMinutes * 60 * 1000);
     setBlackClock(initialMinutes * 60 * 1000);
     setLastMoveAt(Date.now());
@@ -167,43 +197,40 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     if (!isPlayerWhite && turn === "white" && status === "playing" && moveCount === 0) {
       setAiThinking(true);
       const timeout = setTimeout(() => {
-        const move = getBestMove(chess.fen(), difficulty);
+        const move = getBestMove(chessRef.current.fen(), difficulty);
         if (move) applyMove(move.from, move.to, move.promotion || "q");
         setAiThinking(false);
       }, 500);
       return () => clearTimeout(timeout);
     }
-  }, [isPlayerWhite, turn, status, moveCount, difficulty, chess, applyMove]);
+  }, [isPlayerWhite, turn, status, moveCount, difficulty, applyMove]);
 
-  return (
-    <div className="space-y-4 pb-20 sm:pb-0">
-      {/* Top bar */}
-      <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2">
-        <Link href="/play" className="text-sm text-ccb-muted hover:text-ccb-primary flex items-center gap-1">
-          <ArrowLeft className="w-4 h-4" /> Back
-        </Link>
-        <div className="flex items-center gap-2 text-sm text-ccb-muted">
-          <Bot className="w-4 h-4" />
-          <span>{aiThinking ? "Thinking..." : DIFFICULTY_LABELS[difficulty]}</span>
-        </div>
-      </div>
+  const opponentData = isPlayerWhite
+    ? { name: DIFFICULTY_LABELS[difficulty], color: "black", symbol: "♚", captured: captured.black, advantage: -captured.advantage, clock: getLiveClock("black"), isActive: turn === "black" && !gameEnded }
+    : { name: DIFFICULTY_LABELS[difficulty], color: "white", symbol: "♔", captured: captured.white, advantage: captured.advantage, clock: getLiveClock("white"), isActive: turn === "white" && !gameEnded };
 
-      {/* Opponent info (top) */}
-      <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center">
-            <Bot className="w-5 h-5 text-ccb-muted" />
+  const playerData = isPlayerWhite
+    ? { name: "You", color: "white", symbol: "♔", captured: captured.white, advantage: captured.advantage, clock: getLiveClock("white"), isActive: isPlayerTurn && !gameEnded }
+    : { name: "You", color: "black", symbol: "♚", captured: captured.black, advantage: -captured.advantage, clock: getLiveClock("black"), isActive: isPlayerTurn && !gameEnded };
+
+  const board = (
+    <div className="w-full">
+      {/* Opponent bar */}
+      <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2 mb-1">
+        <div className="flex items-center gap-2">
+          <div className="w-9 h-9 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
+            <Bot className="w-4 h-4 text-ccb-muted" />
           </div>
-          <div>
-            <div className="text-sm font-medium">{DIFFICULTY_LABELS[difficulty]}</div>
-            <div className="text-xs text-ccb-muted">{aiColor === "white" ? "♔ White" : "♚ Black"}</div>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium leading-tight">{opponentData.name}</span>
+            <CapturedPieces pieces={opponentData.captured} advantage={opponentData.advantage} perspective="top" />
           </div>
         </div>
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-mono text-lg font-bold ${
-          turn === aiColor && !gameEnded ? "bg-ccb-primary/10 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
+        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-lg font-bold transition-colors ${
+          opponentData.isActive ? "bg-ccb-primary/15 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
         }`}>
           <Clock className="w-4 h-4" />
-          {getLiveClock(aiColor)}
+          {opponentData.clock}
         </div>
       </div>
 
@@ -217,34 +244,35 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
             return onDrop(sourceSquare, targetSquare);
           },
           allowDragging: isPlayerTurn && !gameEnded,
+          squareStyles: squareStyles,
           darkSquareStyle: { backgroundColor: "#312e81" },
           lightSquareStyle: { backgroundColor: "#e0e7ff" },
           boardStyle: { borderRadius: "8px", overflow: "hidden" },
         }} />
       </div>
 
-      {/* Player info (bottom) */}
-      <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center">
-            <span className="text-lg">{isPlayerWhite ? "♔" : "♚"}</span>
+      {/* Player bar */}
+      <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2 mt-1">
+        <div className="flex items-center gap-2">
+          <div className="w-9 h-9 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
+            <span className="text-base">{playerData.symbol}</span>
           </div>
-          <div>
-            <div className="text-sm font-medium">You</div>
-            <div className="text-xs text-ccb-muted">{playerColor === "white" ? "♔ White" : "♚ Black"}</div>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium leading-tight">{playerData.name}</span>
+            <CapturedPieces pieces={playerData.captured} advantage={playerData.advantage} perspective="bottom" />
           </div>
         </div>
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-mono text-lg font-bold ${
-          isPlayerTurn && !gameEnded ? "bg-ccb-primary/10 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
+        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-lg font-bold transition-colors ${
+          playerData.isActive ? "bg-ccb-primary/15 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
         }`}>
           <Clock className="w-4 h-4" />
-          {getLiveClock(playerColor)}
+          {playerData.clock}
         </div>
       </div>
 
       {/* Controls */}
       {!gameEnded && (
-        <div className="flex items-center justify-center gap-3 max-w-[600px] mx-auto">
+        <div className="flex items-center justify-center gap-3 max-w-[600px] mx-auto mt-3">
           {showResignConfirm ? (
             <>
               <span className="text-sm text-ccb-muted">Resign?</span>
@@ -262,8 +290,42 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
           )}
         </div>
       )}
+    </div>
+  );
 
-      {/* Victory / defeat / draw flyover */}
+  const sidebar = (
+    <div className="flex flex-col gap-3">
+      {/* Status header */}
+      <div className="card flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Link href="/play" className="text-sm text-ccb-muted hover:text-ccb-primary flex items-center gap-1">
+            <ArrowLeft className="w-4 h-4" /> Back
+          </Link>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-ccb-muted">
+          <Bot className="w-4 h-4" />
+          <span>{aiThinking ? "Thinking..." : DIFFICULTY_LABELS[difficulty]}</span>
+        </div>
+      </div>
+
+      {/* Move history */}
+      <MoveHistory moves={moveHistory} />
+
+      {/* Footer info */}
+      <div className="text-center text-xs text-ccb-muted">
+        Move {moveCount} · {DIFFICULTY_LABELS[difficulty]} · vs Computer
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Mobile: stacked. Desktop: two-column */}
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start justify-center pb-20 sm:pb-0">
+        <div className="w-full lg:w-[600px] lg:max-w-[600px] shrink-0">{board}</div>
+        <div className="w-full lg:w-[280px] shrink-0">{sidebar}</div>
+      </div>
+
       <VictoryOverlay
         visible={gameEnded}
         outcome={(winner === null ? "draw" : winner === playerColor ? "win" : "loss") as GameOutcome}
@@ -272,10 +334,6 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
         subtitle={`${DIFFICULTY_LABELS[difficulty]} · vs Computer`}
         onNewGame={handleNewGame}
       />
-
-      <div className="text-center text-xs text-ccb-muted">
-        Move {moveCount} · {DIFFICULTY_LABELS[difficulty]} · vs Computer
-      </div>
-    </div>
+    </>
   );
 }
