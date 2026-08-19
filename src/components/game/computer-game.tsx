@@ -24,6 +24,7 @@ interface ComputerGameProps {
   playerColor: "white" | "black";
   initialMinutes: number;
   incrementSeconds: number;
+  userId: string | null;
 }
 
 const DIFFICULTY_LABELS: Record<AIDifficulty, string> = {
@@ -50,7 +51,7 @@ function formatClock(ms: number | null): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-export default function ComputerGame({ difficulty, playerColor, initialMinutes, incrementSeconds }: ComputerGameProps) {
+export default function ComputerGame({ difficulty, playerColor, initialMinutes, incrementSeconds, userId }: ComputerGameProps) {
   const chessRef = useRef(new Chess());
   const [fen, setFen] = useState(chessRef.current.fen());
   const [turn, setTurn] = useState<"white" | "black">("white");
@@ -156,6 +157,36 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
       playSound("gameEnd");
     }
   }, [gameEnded]);
+
+  // Save bot game to database when game ends
+  const savedRef = useRef(false);
+  useEffect(() => {
+    if (!gameEnded || savedRef.current || !userId) return;
+    savedRef.current = true;
+
+    const pgn = chessRef.current.pgn();
+    const finalFen = chessRef.current.fen();
+    const moveCountVal = chessRef.current.history().length;
+
+    fetch("/api/games/save-bot-game", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId,
+        difficulty,
+        playerColor,
+        status,
+        winner,
+        pgn,
+        fen: finalFen,
+        moveCount: moveCountVal,
+        initialMinutes,
+        incrementSeconds,
+        whiteClockMs: whiteClock,
+        blackClockMs: blackClock,
+      }),
+    }).catch(() => {});
+  }, [gameEnded, userId, status, winner, difficulty, playerColor, initialMinutes, incrementSeconds, whiteClock, blackClock]);
 
   // Apply a move with sound
   const applyMove = useCallback((from: string, to: string, promotion: string = "q") => {

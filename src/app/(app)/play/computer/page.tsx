@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import ComputerGame from "@/components/game/computer-game";
 import type { AIDifficulty } from "@/lib/game/chess-ai";
+import { createClient } from "@/lib/supabase/server";
 
 const VALID_DIFFICULTIES = ["easy", "medium", "hard"];
 const VALID_COLORS = ["white", "black"];
@@ -29,12 +30,17 @@ export default async function ComputerGamePage({
   };
   const tcConfig = timeMap[tc] || timeMap.blitz;
 
+  // Get current user (optional — can play as guest)
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
   return (
     <ComputerGame
       difficulty={difficulty}
       playerColor={color}
       initialMinutes={tcConfig.minutes}
       incrementSeconds={tcConfig.increment}
+      userId={user?.id || null}
     />
   );
 }
