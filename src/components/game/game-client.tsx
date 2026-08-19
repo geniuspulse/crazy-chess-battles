@@ -64,6 +64,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const [legalMoveSquares, setLegalMoveSquares] = useState<string[]>([]);
   const [premove, setPremove] = useState<{ from: string; to: string } | null>(null);
   const [activeSheet, setActiveSheet] = useState<SheetType>(null);
+  const [clockTick, setClockTick] = useState(0);
   const [desktopTab, setDesktopTab] = useState<"moves" | "chat">("moves");
   const lastFenRef = useRef(game.fen);
   const soundPlayedForEnd = useRef(false);
@@ -81,6 +82,13 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const isBlack = game.black_player_id === currentUserId;
   const myTurn = (isWhite && game.turn === "white") || (isBlack && game.turn === "black");
   const gameEnded = game.status !== "playing";
+
+  // Live clock re-render tick
+  useEffect(() => {
+    if (gameEnded) return;
+    const interval = setInterval(() => setClockTick((t) => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, [gameEnded]);
   const myRatingChange = isWhite ? game.white_rating_change : game.black_rating_change;
 
   // Derived: captured pieces, check square, board highlights
@@ -181,6 +189,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
       return formatClock(player === "white" ? game.white_clock_ms : game.black_clock_ms);
     }
     const elapsed = Date.now() - new Date(game.last_move_at).getTime();
+    void clockTick; // force re-render every second
     const baseMs = player === "white" ? game.white_clock_ms : game.black_clock_ms;
     return formatClock(Math.max(0, baseMs - elapsed));
   };

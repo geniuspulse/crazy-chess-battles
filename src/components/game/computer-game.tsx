@@ -61,6 +61,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
   const [whiteClock, setWhiteClock] = useState(initialMinutes * 60 * 1000);
   const [blackClock, setBlackClock] = useState(initialMinutes * 60 * 1000);
+  const [clockTick, setClockTick] = useState(0);
   const [lastMoveAt, setLastMoveAt] = useState(Date.now());
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
@@ -132,6 +133,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     if (gameEnded) return;
     const tick = () => {
       const now = Date.now();
+      setClockTick((t) => t + 1);
       const elapsed = now - lastMoveAt;
       const activeClock = turn === "white" ? whiteClock : blackClock;
       const remaining = activeClock - elapsed;
@@ -341,6 +343,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
       return formatClock(player === "white" ? whiteClock : blackClock);
     }
     const elapsed = Date.now() - lastMoveAt;
+    void clockTick; // force re-render every second
     const base = player === "white" ? whiteClock : blackClock;
     return formatClock(Math.max(0, base - elapsed));
   };

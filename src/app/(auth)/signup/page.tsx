@@ -52,7 +52,7 @@ export default function SignupPage() {
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -67,10 +67,26 @@ export default function SignupPage() {
     if (error) {
       setError(error.message);
       setLoading(false);
-    } else {
-      router.push("/dashboard");
-      router.refresh();
+      return;
     }
+
+    // After signup, call the API to set the initial ELO based on chess level
+    // The DB trigger creates the profile with default 1500; this corrects it.
+    if (data?.user?.id) {
+      try {
+        await fetch("/api/auth/set-rating", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: data.user.id }),
+        });
+      } catch {
+        // Non-critical — the profile still exists with 1500 default
+        // The user can report their level again later
+      }
+    }
+
+    router.push("/dashboard");
+    router.refresh();
   };
 
   return (
