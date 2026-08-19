@@ -1,21 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
- * One-time migration route: creates Chess Battles tables.
- * Protected by admin auth + CRON_SECRET.
+ * One-time migration: creates Chess Battles tables.
+ * Protected by CRON_SECRET (callable without user auth).
  * Safe to call multiple times (uses IF NOT EXISTS).
  */
 export async function POST(req: NextRequest) {
   try {
-    // Verify admin
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const admin = createAdminClient();
-    const { data: profile } = await admin.from("profiles").select("is_admin").eq("id", user.id).single();
-    if (!profile?.is_admin) return NextResponse.json({ error: "Admin only" }, { status: 403 });
+    const authHeader = req.headers.get("authorization");
+    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     // Run SQL via pg
     const { Client } = await import("pg");
@@ -24,6 +19,10 @@ export async function POST(req: NextRequest) {
 
     const sqlPath = path.join(process.cwd(), "supabase/migrations/005_chess_battles.sql");
     const sql = fs.readFileSync(sqlPath, "utf8");
+
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json({ error: "DATABASE_URL not set" }, { status: 500 });
+    }
 
     const client = new Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
@@ -43,10 +42,4 @@ export async function POST(req: NextRequest) {
     console.error("Migration error:", e);
     return NextResponse.json({ error: e.message || "Migration failed" }, { status: 500 });
   }
-}
-
-// Helper to avoid circular import
-async function createClient() {
-  const { createClient: createSupaClient } = await import("@/lib/supabase/server");
-  return createSupaClient();
 }
