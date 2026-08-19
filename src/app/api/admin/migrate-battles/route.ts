@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
- * Runs battle table migrations using direct Postgres connection.
- * Tries pooler URL first, falls back to direct connection.
+ * Tries multiple Supabase pooler regions to find the correct one.
  * Protected by CRON_SECRET.
  */
 
 const MIGRATION_SQL = `-- ============================================================
--- Chess Battles — stake-based head-to-head chess for money
+-- Chess Battles tables + wallet functions + withdrawals
 -- ============================================================
 
--- Battle config (admin-controlled, single row)
 CREATE TABLE IF NOT EXISTS battle_config (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   enabled         BOOLEAN NOT NULL DEFAULT true,
@@ -27,11 +24,8 @@ CREATE TABLE IF NOT EXISTS battle_config (
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+INSERT INTO battle_config (id) VALUES (gen_random_uuid()) ON CONFLICT DO NOTHING;
 
-INSERT INTO battle_config (id) VALUES (gen_random_uuid())
-ON CONFLICT DO NOTHING;
-
--- Battle queue
 CREATE TABLE IF NOT EXISTS battle_queue (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   player_id       UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -40,11 +34,10 @@ CREATE TABLE IF NOT EXISTS battle_queue (
   status          TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'matched', 'expired', 'left')),
   battle_id       UUID,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  matched_at      TIMESTAMPTZ,
+  matched_at       TIMESTAMPTZ,
   UNIQUE (player_id, stake_cents, status)
 );
 
--- Battles table
 CREATE TABLE IF NOT EXISTS battles (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   white_player_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -93,13 +86,8 @@ CREATE TABLE IF NOT EXISTS battle_escrow (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   released_at     TIMESTAMPTZ
 );
-
 ALTER TABLE battle_escrow ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Players read own escrow" ON battle_escrow FOR SELECT TO authenticated USING (player_id = auth.uid());
-
--- ============================================================
--- Wallet helper RPC functions
--- ============================================================
 
 DO $$
 BEGIN
@@ -133,10 +121,6 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 GRANT EXECUTE ON FUNCTION public.credit_wallet(UUID, INT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.debit_wallet(UUID, INT) TO authenticated;
 
--- ============================================================
--- Withdrawals table
--- ============================================================
-
 CREATE TABLE IF NOT EXISTS withdrawals (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -149,7 +133,6 @@ CREATE TABLE IF NOT EXISTS withdrawals (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 ALTER TABLE withdrawals ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users read own withdrawals" ON withdrawals FOR SELECT TO authenticated USING (user_id = auth.uid());
 CREATE POLICY "Users insert own withdrawals" ON withdrawals FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
@@ -159,6 +142,34 @@ CREATE POLICY "Admins read all withdrawals" ON withdrawals FOR SELECT TO authent
 CREATE POLICY "Admins update all withdrawals" ON withdrawals FOR UPDATE TO authenticated USING (
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
 );
+
+-- chess_level column for profiles
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'profiles' AND column_name = 'chess_level'
+  ) THEN
+    ALTER TABLE profiles ADD COLUMN chess_level TEXT DEFAULT 'beginner';
+  END IF;
+END $$;
+
+-- game_chat table
+CREATE TABLE IF NOT EXISTS game_chat (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  game_id         UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  message         TEXT NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE game_chat ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Players can read game chat" ON game_chat FOR SELECT TO authenticated USING (
+  EXISTS (SELECT 1 FROM games WHERE id = game_id AND (white_player = auth.uid() OR black_player = auth.uid()))
+);
+CREATE POLICY "Players can send game chat" ON game_chat FOR INSERT TO authenticated WITH CHECK (
+  EXISTS (SELECT 1 FROM games WHERE id = game_id AND (white_player = auth.uid() OR black_player = auth.uid()))
+);
+CREATE INDEX IF NOT EXISTS idx_game_chat_game ON game_chat(game_id, created_at);
 `;
 
 export async function POST(req: NextRequest) {
@@ -173,31 +184,45 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "DATABASE_URL not set" }, { status: 500 });
     }
 
-    // Parse the existing URL and construct alternative connection strings
     const parsed = new URL(dbUrl);
     const password = parsed.password;
     const projectRef = parsed.username.replace("postgres.", "");
 
-    // Try 1: Original pooler URL (session mode, port 5432)
-    // Try 2: Transaction pooler (port 6543) — original
-    // Try 3: Direct connection
-    const connections = [
-      // Session mode pooler (port 5432 — more reliable for serverless migrations)
-      {
-        name: "pooler-session-5432",
-        url: `postgresql://postgres.${projectRef}:${password}@aws-0-eu-central-1.pooler.supabase.com:5432/postgres?pgbouncer=true`,
-      },
-      // Direct connection (no pooler)
-      {
-        name: "direct-5432",
-        url: `postgresql://postgres:${password}@db.${projectRef}.supabase.co:5432/postgres`,
-      },
-      // Original pooler URL
-      {
-        name: "pooler-tx-6543",
-        url: dbUrl,
-      },
+    // Try ALL Supabase pooler regions + direct connection
+    const regions = [
+      "aws-0-eu-central-1",
+      "aws-0-us-east-1",
+      "aws-0-us-west-1",
+      "aws-0-ap-southeast-1",
+      "aws-0-ap-northeast-1",
+      "aws-0-ap-south-1",
+      "aws-0-sa-east-1",
+      "aws-0-eu-west-1",
+      "aws-0-eu-west-2",
+      "aws-0-ap-southeast-2",
+      "aws-0-ap-northeast-2",
+      "aws-0-ca-central-1",
     ];
+
+    const connections: { name: string; url: string }[] = [];
+
+    // Direct connection (try both formats)
+    connections.push({
+      name: "direct-supabase-co",
+      url: `postgresql://postgres:${password}@db.${projectRef}.supabase.co:5432/postgres`,
+    });
+
+    // All pooler regions (both ports)
+    for (const region of regions) {
+      connections.push({
+        name: `pooler-${region}-6543`,
+        url: `postgresql://postgres.${projectRef}:${password}@${region}.pooler.supabase.com:6543/postgres`,
+      });
+      connections.push({
+        name: `pooler-${region}-5432`,
+        url: `postgresql://postgres.${projectRef}:${password}@${region}.pooler.supabase.com:5432/postgres?pgbouncer=true`,
+      });
+    }
 
     const { Client } = await import("pg");
     const errors: string[] = [];
@@ -206,13 +231,13 @@ export async function POST(req: NextRequest) {
       try {
         const client = new Client({
           connectionString: conn.url,
-          connectionTimeoutMillis: 10000,
+          connectionTimeoutMillis: 5000,
         });
         await client.connect();
         await client.query(MIGRATION_SQL);
 
         const res = await client.query(
-          "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename LIKE 'battle%' OR tablename = 'withdrawals'"
+          "SELECT tablename FROM pg_tables WHERE schemaname='public' AND (tablename LIKE 'battle%' OR tablename = 'withdrawals' OR tablename = 'game_chat')"
         );
         await client.end();
 
@@ -222,13 +247,19 @@ export async function POST(req: NextRequest) {
           tables: res.rows.map((r: { tablename: string }) => r.tablename),
         });
       } catch (err: any) {
-        errors.push(`${conn.name}: ${err.message}`);
+        // Only log non-timeout errors to avoid noise
+        if (!err.message.includes("timeout") && !err.message.includes("ENOTFOUND")) {
+          errors.push(`${conn.name}: ${err.message}`);
+        } else if (err.message.includes("ENOTFOUND") === false) {
+          errors.push(`${conn.name}: ${err.message}`);
+        }
       }
     }
 
     return NextResponse.json({
       error: "All connection attempts failed",
-      errors,
+      errors: errors.slice(0, 10),
+      totalAttempts: connections.length,
       projectRef,
       passwordLength: password?.length || 0,
     }, { status: 500 });
