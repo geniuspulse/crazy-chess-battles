@@ -130,13 +130,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Record payout
-    await admin.from("deposits").insert({
+    const { error: _depErr } = await admin.from("deposits").insert({
       user_id: winnerId,
       amount_cents: payout,
       status: "success",
       method: "battle_payout",
       reference: `battle:${battleId}:payout`,
     });
+    if (_depErr) console.error("Deposit audit log failed:", _depErr);
 
     // Mark battle as completed and settled
     await admin
@@ -217,13 +218,14 @@ export async function GET(req: NextRequest) {
       const { data: battleData } = await admin.from("battles").select("settled, pot_cents, platform_fee_cents, winner_payout_cents, stake_cents").eq("id", battle.id).single();
       if (battleData && !battleData.settled) {
         await admin.rpc("credit_wallet", { p_user_id: winnerId, p_amount_cents: battleData.winner_payout_cents });
-        await admin.from("deposits").insert({
+        const { error: _depErr } = await admin.from("deposits").insert({
           user_id: winnerId,
           amount_cents: battleData.winner_payout_cents,
           status: "success",
           method: "battle_payout",
           reference: `battle:${battle.id}:auto_settle`,
         });
+    if (_depErr) console.error("Deposit audit log failed:", _depErr);
         await admin.from("battles").update({
           status: "completed",
           winner_id: winnerId,

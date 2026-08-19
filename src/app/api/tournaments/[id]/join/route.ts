@@ -97,22 +97,26 @@ export async function POST(
 
       paidEntryFee = true;
 
-      // Add entry fee to prize pool
-      await admin
+      // Add entry fee to prize pool (non-fatal if this fails)
+      const { error: poolErr } = await admin
         .from("tournaments")
         .update({
           prize_pool_cents: (tournament.prize_pool_cents || 0) + entryFee,
         })
         .eq("id", tournamentId);
 
-      // Record deposit entry for audit trail
-      await admin.from("deposits").insert({
+      if (poolErr) console.error("Prize pool update failed:", poolErr);
+
+      // Record deposit entry for audit trail (non-fatal — must not block the join)
+      const { error: depositErr } = await admin.from("deposits").insert({
         user_id: user.id,
         amount_cents: entryFee,
         status: "success",
         method: "tournament_entry",
         reference: `tournament:${tournamentId}:entry`,
       });
+
+      if (depositErr) console.error("Deposit audit log failed:", depositErr);
     }
 
     // Join tournament
@@ -147,18 +151,23 @@ export async function POST(
       return NextResponse.json({ error: joinErr.message }, { status: 500 });
     }
 
-    // Trigger referral activation for joining a tournament
+    // Trigger referral activation for joining a tournament (non-fatal)
     const admin2 = createAdminClient();
-    await admin2.rpc("check_referral_activation", { p_user_id: user.id, p_action: "tournament" });
+    const { error: refErr } = await admin2.rpc("check_referral_activation", { p_user_id: user.id, p_action: "tournament" });
+    if (refErr) console.error("Referral activation failed:", refErr);
 
-    // Award 50 berries for joining a tournament
-    const { data: tConfig } = await admin2.from("berry_config").select("enabled").limit(1).single();
-    if (tConfig?.enabled) {
-      await admin2.rpc("credit_berries", {
-        p_user_id: user.id,
-        p_amount: 50,
-        p_description: "Joined a tournament!",
-      });
+    // Award 50 berries for joining a tournament (non-fatal)
+    try {
+      const { data: tConfig } = await admin2.from("berry_config").select("enabled").limit(1).single();
+      if (tConfig?.enabled) {
+        await admin2.rpc("credit_berries", {
+          p_user_id: user.id,
+          p_amount: 50,
+          p_description: "Joined a tournament!",
+        });
+      }
+    } catch (berryErr) {
+      console.error("Berry award failed:", berryErr);
     }
 
     return NextResponse.json({ success: true, paidEntryFee, berriesAwarded: 50 });

@@ -97,13 +97,14 @@ export async function distributePrizes(
     });
 
     // Record the payout as a deposit entry for audit trail
-    await admin.from("deposits").insert({
+    const { error: _depErr } = await admin.from("deposits").insert({
       user_id: payout.player_id,
       amount_cents: payout.amount_cents,
       status: "success",
       method: "tournament_payout",
       reference: `tournament:${tournamentId}:rank:${payout.rank}`,
     });
+    if (_depErr) console.error("Deposit audit log failed:", _depErr);
   }
 
   // Update tournament with actual payouts

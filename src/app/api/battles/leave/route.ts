@@ -39,13 +39,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Record refund
-    await admin.from("deposits").insert({
+    const { error: _depErr } = await admin.from("deposits").insert({
       user_id: user.id,
       amount_cents: queueEntry.stake_cents,
       status: "success",
       method: "battle_refund",
       reference: `battle_queue_refund:${queueEntry.id}`,
     });
+    if (_depErr) console.error("Deposit audit log failed:", _depErr);
 
     // Mark queue entry as left
     await admin

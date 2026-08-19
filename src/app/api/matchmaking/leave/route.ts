@@ -14,10 +14,11 @@ export async function POST(req: NextRequest) {
     }
 
     const admin = createAdminClient();
+    // Fix: column is "player_id", not "user_id"
     const { error } = await admin
       .from("matchmaking_queue")
       .delete()
-      .eq("user_id", user.id);
+      .eq("player_id", user.id);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

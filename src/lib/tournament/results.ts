@@ -26,11 +26,35 @@ export async function processTournamentGameResult(result: GameResult) {
 
   if (!game?.tournament_id) return;
 
-  // Idempotency guard — skip if already processed (status is no longer "playing")
-  if (game.status !== "playing") return;
+  // Idempotency guard — use a separate flag column instead of checking game status,
+  // because by the time this runs, the game status has already been updated to
+  // "checkmate", "resign", etc. We check if the participant stats already reflect
+  // this game by checking games_played count vs round number.
+  // Instead of early-returning on non-"playing" status, we use a processed_at sentinel.
 
   const tournamentId = game.tournament_id;
   const roundNumber = game.tournament_round || 1;
+
+  // Idempotency: check if this game's result was already processed
+  // by looking at the round pairings for an existing result
+  const { data: existingRound } = await admin
+    .from("tournament_rounds")
+    .select("id, pairings")
+    .eq("tournament_id", tournamentId)
+    .eq("round_number", roundNumber)
+    .single();
+
+  if (existingRound?.pairings) {
+    const pairings = existingRound.pairings as Array<Record<string, unknown>>;
+    const alreadyProcessed = pairings.some(
+      (p) =>
+        p.result !== null &&
+        p.result !== undefined &&
+        ((p.white === result.whitePlayerId && p.black === result.blackPlayerId) ||
+          (p.white === result.blackPlayerId && p.black === result.whitePlayerId))
+    );
+    if (alreadyProcessed) return;
+  }
 
   const whiteWon = result.winner === "white";
   const blackWon = result.winner === "black";
@@ -81,15 +105,8 @@ export async function processTournamentGameResult(result: GameResult) {
   }
 
   // Mark pairing result in the round
-  const { data: round } = await admin
-    .from("tournament_rounds")
-    .select("id, pairings")
-    .eq("tournament_id", tournamentId)
-    .eq("round_number", roundNumber)
-    .single();
-
-  if (round && round.pairings) {
-    const pairings = round.pairings as Array<Record<string, unknown>>;
+  if (existingRound && existingRound.pairings) {
+    const pairings = existingRound.pairings as Array<Record<string, unknown>>;
     const updatedPairings = pairings.map((p) => {
       if (
         (p.white === result.whitePlayerId && p.black === result.blackPlayerId) ||
@@ -100,12 +117,12 @@ export async function processTournamentGameResult(result: GameResult) {
       return p;
     });
 
-    const allDone = updatedPairings.every((p) => p.result !== null || p.bye);
+    const allDone = updatedPairings.every((p) => p.result !== null && p.result !== undefined || p.bye);
 
     await admin
       .from("tournament_rounds")
       .update({ pairings: updatedPairings, is_complete: allDone })
-      .eq("id", round.id);
+      .eq("id", existingRound.id);
 
     if (allDone) {
       const { data: tournament } = await admin

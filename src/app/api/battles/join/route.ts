@@ -93,13 +93,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Record escrow transaction
-    await admin.from("deposits").insert({
+    const { error: _depErr } = await admin.from("deposits").insert({
       user_id: user.id,
       amount_cents: stakeCents,
       status: "success",
       method: "battle_escrow",
       reference: `battle_queue:${user.id}:${stakeCents}`,
     });
+    if (_depErr) console.error("Deposit audit log failed:", _depErr);
 
     // Add to queue
     const { data: queueEntry, error: queueErr } = await admin

@@ -18,19 +18,27 @@ export default async function WalletPage() {
     .eq("id", user.id)
     .single();
 
-  const { data: deposits } = await supabase
-    .from("deposits")
-    .select("id, amount_cents, method, status, created_at, charge_id")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(20);
+  // Gracefully handle missing deposits table — don't crash the whole page
+  let deposits: any[] = [];
+  try {
+    const { data, error } = await supabase
+      .from("deposits")
+      .select("id, amount_cents, method, status, created_at, charge_id")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (!error && data) deposits = data;
+  } catch {
+    // deposits table may not exist yet — page still works without history
+  }
 
   return (
     <WalletClient
       balanceCents={profile?.wallet_balance_cents || 0}
       berryBalance={profile?.berry_balance || 0}
       email={profile?.email || user.email || ""}
-      deposits={deposits || []}
+      deposits={deposits}
       phone={profile?.phone || null}
     />
   );
