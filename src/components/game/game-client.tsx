@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
 import { useRealtimeGame, type GameState } from "@/hooks/use-realtime-game";
-import { Clock, Flag, Eye, ArrowLeft, Volume2, VolumeX, List, Smile, Palette, X } from "lucide-react";
+import { Clock, Flag, Eye, ArrowLeft, Volume2, VolumeX, List, Smile, Palette, X, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { getCapturedPieces, getCheckSquare } from "@/lib/game/board-helpers";
 import { playSound, detectMoveSound, setSoundEnabled } from "@/lib/game/sound";
@@ -18,6 +18,7 @@ import PromotionDialog from "./promotion-dialog";
 import BoardThemePicker from "./board-theme-picker";
 import QuickReactions from "./quick-reactions";
 import OpeningBadge from "./opening-badge";
+import GameChat from "./game-chat";
 
 interface GameClientProps {
   gameId: string;
@@ -36,7 +37,7 @@ const STATUS_LABELS: Record<string, string> = {
   timeout: "Time out",
 };
 
-type SheetType = "moves" | "reactions" | "theme" | null;
+type SheetType = "moves" | "reactions" | "theme" | "chat" | null;
 
 function formatClock(ms: number | null): string {
   if (ms === null || ms === undefined) return "—";
@@ -63,6 +64,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const [legalMoveSquares, setLegalMoveSquares] = useState<string[]>([]);
   const [premove, setPremove] = useState<{ from: string; to: string } | null>(null);
   const [activeSheet, setActiveSheet] = useState<SheetType>(null);
+  const [desktopTab, setDesktopTab] = useState<"moves" | "chat">("moves");
   const lastFenRef = useRef(game.fen);
   const soundPlayedForEnd = useRef(false);
   const prevFenRef = useRef(game.fen);
@@ -417,6 +419,9 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
                 </button>
                 <button onClick={() => toggleSheet("reactions")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "reactions" ? "text-ccb-primary" : "text-ccb-muted"}`}>
                   <Smile className="w-5 h-5" /><span className="text-[10px]">React</span>
+                <button onClick={() => toggleSheet("chat")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "chat" ? "text-ccb-primary" : "text-ccb-muted"}`}>
+                  <MessageCircle className="w-5 h-5" /><span className="text-[10px]">Chat</span>
+                </button>
                 </button>
                 <button onClick={() => toggleSheet("theme")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "theme" ? "text-ccb-primary" : "text-ccb-muted"}`}>
                   <Palette className="w-5 h-5" /><span className="text-[10px]">Board</span>
@@ -429,7 +434,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
               <div className="lg:hidden absolute inset-x-2 bottom-16 z-20 max-h-[45%] rounded-xl border border-ccb-border bg-ccb-card shadow-2xl animate-sheet-up flex flex-col overflow-hidden">
                 <div className="flex items-center justify-between px-3 py-2 border-b border-ccb-border shrink-0">
                   <span className="text-sm font-medium">
-                    {activeSheet === "moves" ? "Move History" : activeSheet === "reactions" ? "Quick Reactions" : "Board Theme"}
+                    {activeSheet === "moves" ? "Move History" : activeSheet === "reactions" ? "Quick Reactions" : activeSheet === "chat" ? "Chat" : "Board Theme"}
                   </span>
                   <button onClick={() => setActiveSheet(null)} className="text-ccb-muted hover:text-ccb-primary p-1">
                     <X className="w-4 h-4" />
@@ -441,6 +446,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
                   )}
                   {activeSheet === "moves" && <MoveHistory moves={moveHistory} />}
                   {activeSheet === "reactions" && <QuickReactions position="bottom" />}
+                {activeSheet === "chat" && <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} />}
                   {activeSheet === "theme" && <BoardThemePicker inline onThemeChange={setBoardTheme} />}
                 </div>
               </div>
@@ -468,17 +474,33 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
 
               {moveHistory.length >= 2 && <div className="shrink-0"><OpeningBadge moves={moveHistory} /></div>}
 
-              <div className="flex-1 min-h-0">
-                <MoveHistory moves={moveHistory} />
+              {/* Tab toggle */}
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => setDesktopTab("moves")} className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${desktopTab === "moves" ? "bg-ccb-primary/10 text-ccb-primary" : "text-ccb-muted hover:text-ccb-text"}`}>
+                  Moves
+                </button>
+                <button onClick={() => setDesktopTab("chat")} className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${desktopTab === "chat" ? "bg-ccb-primary/10 text-ccb-primary" : "text-ccb-muted hover:text-ccb-text"}`}>
+                  Chat
+                </button>
               </div>
 
-              <div className="text-center text-xs text-ccb-muted shrink-0">
-                Move {game.move_count} · {game.time_control} · {game.rated ? "Ranked" : "Casual"}
-              </div>
-
-              <div className="shrink-0">
-                <QuickReactions position="side" />
-              </div>
+              {desktopTab === "moves" ? (
+                <>
+                  <div className="flex-1 min-h-0">
+                    <MoveHistory moves={moveHistory} />
+                  </div>
+                  <div className="text-center text-xs text-ccb-muted shrink-0">
+                    Move {game.move_count} · {game.time_control} · {game.rated ? "Ranked" : "Casual"}
+                  </div>
+                  <div className="shrink-0">
+                    <QuickReactions position="side" />
+                  </div>
+                </>
+              ) : (
+                <div className="flex-1 min-h-0 flex flex-col rounded-lg border border-ccb-border overflow-hidden">
+                  <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -602,6 +624,9 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
                 </button>
                 <button onClick={() => toggleSheet("reactions")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "reactions" ? "text-ccb-primary" : "text-ccb-muted"}`}>
                   <Smile className="w-5 h-5" /><span className="text-[10px]">React</span>
+                <button onClick={() => toggleSheet("chat")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "chat" ? "text-ccb-primary" : "text-ccb-muted"}`}>
+                  <MessageCircle className="w-5 h-5" /><span className="text-[10px]">Chat</span>
+                </button>
                 </button>
                 <button onClick={() => toggleSheet("theme")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "theme" ? "text-ccb-primary" : "text-ccb-muted"}`}>
                   <Palette className="w-5 h-5" /><span className="text-[10px]">Board</span>
@@ -622,7 +647,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
             <div className="lg:hidden absolute inset-x-2 bottom-16 z-20 max-h-[45%] rounded-xl border border-ccb-border bg-ccb-card shadow-2xl animate-sheet-up flex flex-col overflow-hidden">
               <div className="flex items-center justify-between px-3 py-2 border-b border-ccb-border shrink-0">
                 <span className="text-sm font-medium">
-                  {activeSheet === "moves" ? "Move History" : activeSheet === "reactions" ? "Quick Reactions" : "Board Theme"}
+                  {activeSheet === "moves" ? "Move History" : activeSheet === "reactions" ? "Quick Reactions" : activeSheet === "chat" ? "Chat" : "Board Theme"}
                 </span>
                 <button onClick={() => setActiveSheet(null)} className="text-ccb-muted hover:text-ccb-primary p-1">
                   <X className="w-4 h-4" />
@@ -634,6 +659,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
                 )}
                 {activeSheet === "moves" && <MoveHistory moves={moveHistory} />}
                 {activeSheet === "reactions" && <QuickReactions position="bottom" />}
+                {activeSheet === "chat" && <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} />}
                 {activeSheet === "theme" && <BoardThemePicker inline onThemeChange={setBoardTheme} />}
               </div>
             </div>
@@ -662,17 +688,33 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
 
             {moveHistory.length >= 2 && <div className="shrink-0"><OpeningBadge moves={moveHistory} /></div>}
 
-            <div className="flex-1 min-h-0">
-              <MoveHistory moves={moveHistory} />
+            {/* Tab toggle */}
+            <div className="flex items-center gap-1 shrink-0">
+              <button onClick={() => setDesktopTab("moves")} className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${desktopTab === "moves" ? "bg-ccb-primary/10 text-ccb-primary" : "text-ccb-muted hover:text-ccb-text"}`}>
+                Moves
+              </button>
+              <button onClick={() => setDesktopTab("chat")} className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${desktopTab === "chat" ? "bg-ccb-primary/10 text-ccb-primary" : "text-ccb-muted hover:text-ccb-text"}`}>
+                Chat
+              </button>
             </div>
 
-            <div className="text-center text-xs text-ccb-muted shrink-0">
-              Move {game.move_count} · {game.time_control}
-            </div>
-
-            <div className="shrink-0">
-              <QuickReactions position="side" />
-            </div>
+            {desktopTab === "moves" ? (
+              <>
+                <div className="flex-1 min-h-0">
+                  <MoveHistory moves={moveHistory} />
+                </div>
+                <div className="text-center text-xs text-ccb-muted shrink-0">
+                  Move {game.move_count} · {game.time_control}
+                </div>
+                <div className="shrink-0">
+                  <QuickReactions position="side" />
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 min-h-0 flex flex-col rounded-lg border border-ccb-border overflow-hidden">
+                <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} />
+              </div>
+            )}
           </div>
         </div>
       </div>
