@@ -37,6 +37,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const chargeId = `wd_${withdrawal.id.slice(0, 8)}_${Date.now()}`;
     const amountMWK = Math.floor(withdrawal.amount_cents / 100);
 
+    let payoutSucceeded = false;
+
     try {
       const payoutResponse = await fetch("https://api.paychangu.com/mobile-money/payouts/initialize", {
         method: "POST",
@@ -55,46 +57,60 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const payoutData = await payoutResponse.json();
 
       if (payoutData.status === "success" || payoutData.status === "pending") {
+        payoutSucceeded = true;
         // Update with charge_id and mark as completed (Paychangu processes async)
         await admin
           .from("withdrawals")
           .update({ status: "completed", charge_id: chargeId })
           .eq("id", id);
 
-        // Notify user
-        await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-github.vercel.app"}/api/notifications/send`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${process.env.CRON_SECRET}`,
-          },
-          body: JSON.stringify({
-            userId: withdrawal.user_id,
+        // Insert in-app notification directly (no self-HTTP fetch)
+        try {
+          await admin.from("notifications").insert({
+            user_id: withdrawal.user_id,
             type: "withdrawal_approved",
+            title: "Your withdrawal has been approved",
+            body: `MWK ${amountMWK} has been sent to ${withdrawal.phone} via ${withdrawal.operator_name}.`,
             data: { amount: amountMWK, phone: withdrawal.phone, operator: withdrawal.operator_name },
-          }),
-        }).catch(() => {});
-
-        // Log action
-        await admin.from("admin_logs").insert({
-          admin_id: user.id,
-          action: "withdrawal_approve",
-          target_type: "withdrawal",
-          target_id: id,
-          details: { amount: amountMWK, phone: withdrawal.phone, charge_id: chargeId },
-        });
-
-        return NextResponse.json({ status: "completed", chargeId });
-      } else {
-        // Payout failed — refund the wallet
-        await admin.rpc("refund_withdrawal", { p_withdrawal_id: id, p_admin_id: user.id });
-        return NextResponse.json({ error: "Payout failed. Wallet has been refunded." }, { status: 500 });
+            read: false,
+          });
+        } catch {}
       }
     } catch (payoutErr: any) {
-      // Payout API error — refund the wallet
+      console.error("Payout API error:", payoutErr);
+    }
+
+    if (!payoutSucceeded) {
+      // Payout failed — refund the wallet
       await admin.rpc("refund_withdrawal", { p_withdrawal_id: id, p_admin_id: user.id });
+
+      // Insert in-app notification directly
+      try {
+        await admin.from("notifications").insert({
+          user_id: withdrawal.user_id,
+          type: "withdrawal_failed",
+          title: "Withdrawal payout failed",
+          body: `Your withdrawal for MWK ${amountMWK} could not be processed. Funds returned to your wallet.`,
+          data: { amount: amountMWK },
+          read: false,
+        });
+      } catch {}
+
       return NextResponse.json({ error: "Payout failed. Wallet has been refunded." }, { status: 500 });
     }
+
+    // Log action
+    try {
+      await admin.from("admin_logs").insert({
+        admin_id: user.id,
+        action: "withdrawal_approve",
+        target_type: "withdrawal",
+        target_id: id,
+        details: { amount: amountMWK, phone: withdrawal.phone, charge_id: chargeId },
+      });
+    } catch {}
+
+    return NextResponse.json({ status: "completed", chargeId });
   } catch (err: any) {
     return NextResponse.json({ error: "Failed to approve withdrawal. Please try again." }, { status: 500 });
   }

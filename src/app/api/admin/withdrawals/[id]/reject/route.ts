@@ -43,28 +43,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .update({ admin_notes: adminNotes })
       .eq("id", id);
 
-    // Notify user
-    await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-github.vercel.app"}/api/notifications/send`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.CRON_SECRET}`,
-      },
-      body: JSON.stringify({
-        userId: withdrawal.user_id,
+    // Insert in-app notification directly (no self-HTTP fetch)
+    const amountMWK = Math.floor(withdrawal.amount_cents / 100);
+    try {
+      await admin.from("notifications").insert({
+        user_id: withdrawal.user_id,
         type: "withdrawal_rejected",
-        data: { amount: Math.floor(withdrawal.amount_cents / 100), reason: adminNotes },
-      }),
-    }).catch(() => {});
+        title: "Your withdrawal request was rejected",
+        body: `Your withdrawal for MWK ${amountMWK} was rejected. Funds returned to wallet. Reason: ${adminNotes}`,
+        data: { amount: amountMWK, reason: adminNotes },
+        read: false,
+      });
+    } catch {}
 
     // Log action
-    await admin.from("admin_logs").insert({
-      admin_id: user.id,
-      action: "withdrawal_reject",
-      target_type: "withdrawal",
-      target_id: id,
-      details: { notes: adminNotes },
-    });
+    try {
+      await admin.from("admin_logs").insert({
+        admin_id: user.id,
+        action: "withdrawal_reject",
+        target_type: "withdrawal",
+        target_id: id,
+        details: { notes: adminNotes },
+      });
+    } catch {}
 
     return NextResponse.json({ status: "rejected" });
   } catch (err: any) {
