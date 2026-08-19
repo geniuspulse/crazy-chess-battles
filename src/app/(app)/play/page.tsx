@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Swords, Clock, Zap, X, Link2, Copy, Check } from "lucide-react";
+import { Swords, Clock, Zap, X, Link2, Copy, Check, Bot } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import type { AIDifficulty } from "@/lib/game/chess-ai";
 
 const timeControls = [
   { id: "bullet", label: "Bullet", minutes: 1, increment: 0, icon: Zap, desc: "1 min" },
@@ -14,6 +15,12 @@ const timeControls = [
   { id: "classical", label: "Classical", minutes: 30, increment: 0, icon: Clock, desc: "30 min" },
 ];
 
+const aiDifficulties: { id: AIDifficulty; label: string; desc: string }[] = [
+  { id: "easy", label: "Easy", desc: "Beginner friendly" },
+  { id: "medium", label: "Medium", desc: "A fair challenge" },
+  { id: "hard", label: "Hard", desc: "Think carefully" },
+];
+
 export default function PlayPage() {
   const [selectedTC, setSelectedTC] = useState<string>("blitz");
   const [rated, setRated] = useState(true);
@@ -22,6 +29,9 @@ export default function PlayPage() {
   const [creatingChallenge, setCreatingChallenge] = useState(false);
   const [copied, setCopied] = useState(false);
   const [matchError, setMatchError] = useState<string | null>(null);
+  const [showComputer, setShowComputer] = useState(false);
+  const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty>("medium");
+  const [aiColor, setAiColor] = useState<"white" | "black">("white");
   const matchChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const matchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
@@ -46,18 +56,14 @@ export default function PlayPage() {
       }
 
       if (data.status === "searching") {
-        // Subscribe to real-time to wait for match
         const channel = supabase
           .channel("matchmaking")
           .on(
             "postgres_changes",
             { event: "DELETE", schema: "public", table: "matchmaking_queue" },
             async () => {
-              // Check if we've been matched
               const { data: { user } } = await supabase.auth.getUser();
               if (!user) return;
-
-              // Look for a new game where we're a player
               const { data: newGame } = await supabase
                 .from("games")
                 .select("id")
@@ -66,7 +72,6 @@ export default function PlayPage() {
                 .order("created_at", { ascending: false })
                 .limit(1)
                 .single();
-
               if (newGame) {
                 supabase.removeChannel(channel);
                 router.push(`/game/${newGame.id}`);
@@ -76,7 +81,6 @@ export default function PlayPage() {
           .subscribe();
         matchChannelRef.current = channel;
 
-        // Timeout after 60s
         matchTimeoutRef.current = setTimeout(() => {
           if (matchChannelRef.current) {
             supabase.removeChannel(matchChannelRef.current);
@@ -85,7 +89,6 @@ export default function PlayPage() {
           setSearching(false);
           setMatchError("No opponent found. Try again!");
         }, 60000);
-
         return;
       }
 
@@ -113,21 +116,14 @@ export default function PlayPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
-    } catch {
-      // ignore
-    }
+    } catch {}
     setSearching(false);
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (matchChannelRef.current) {
-        supabase.removeChannel(matchChannelRef.current);
-      }
-      if (matchTimeoutRef.current) {
-        clearTimeout(matchTimeoutRef.current);
-      }
+      if (matchChannelRef.current) supabase.removeChannel(matchChannelRef.current);
+      if (matchTimeoutRef.current) clearTimeout(matchTimeoutRef.current);
     };
   }, []);
 
@@ -140,12 +136,8 @@ export default function PlayPage() {
         body: JSON.stringify({ timeControl: selectedTC, rated }),
       });
       const data = await response.json();
-      if (data.url) {
-        setChallengeUrl(data.url);
-      }
-    } catch {
-      // ignore
-    }
+      if (data.url) setChallengeUrl(data.url);
+    } catch {}
     setCreatingChallenge(false);
   };
 
@@ -155,6 +147,10 @@ export default function PlayPage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
+  };
+
+  const handlePlayComputer = () => {
+    router.push(`/play/computer?difficulty=${aiDifficulty}&color=${aiColor}&tc=${selectedTC}`);
   };
 
   if (searching) {
@@ -202,9 +198,7 @@ export default function PlayPage() {
               <button
                 key={tc.id}
                 onClick={() => setSelectedTC(tc.id)}
-                className={`tc-btn flex items-center gap-3 text-left ${
-                  isSelected ? "tc-active" : ""
-                }`}
+                className={`tc-btn flex items-center gap-3 text-left ${isSelected ? "tc-active" : ""}`}
               >
                 <Icon className={`w-5 h-5 ${isSelected ? "text-ccb-primary" : "text-ccb-muted"}`} />
                 <div>
@@ -235,6 +229,70 @@ export default function PlayPage() {
             }`}
           />
         </button>
+      </div>
+
+      {/* Play vs Computer */}
+      <div className="card card-hover space-y-4">
+        <h3 className="font-medium flex items-center gap-2">
+          <Bot className="w-4 h-4 text-ccb-primary" />
+          Play vs Computer
+        </h3>
+
+        {showComputer ? (
+          <>
+            {/* Difficulty selection */}
+            <div className="grid grid-cols-3 gap-2">
+              {aiDifficulties.map((d) => (
+                <button
+                  key={d.id}
+                  onClick={() => setAiDifficulty(d.id)}
+                  className={`tc-btn flex flex-col items-center text-center py-3 px-2 ${
+                    aiDifficulty === d.id ? "tc-active" : ""
+                  }`}
+                >
+                  <span className={`text-sm font-medium ${aiDifficulty === d.id ? "text-ccb-primary" : ""}`}>{d.label}</span>
+                  <span className="text-xs text-ccb-muted mt-0.5">{d.desc}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Color selection */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setAiColor("white")}
+                className={`tc-btn flex items-center justify-center gap-2 py-2.5 ${aiColor === "white" ? "tc-active" : ""}`}
+              >
+                <span className="text-lg">♔</span>
+                <span className="text-sm font-medium">Play as White</span>
+              </button>
+              <button
+                onClick={() => setAiColor("black")}
+                className={`tc-btn flex items-center justify-center gap-2 py-2.5 ${aiColor === "black" ? "tc-active" : ""}`}
+              >
+                <span className="text-lg">♚</span>
+                <span className="text-sm font-medium">Play as Black</span>
+              </button>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={handlePlayComputer} className="btn-primary flex-1 flex items-center justify-center gap-2">
+                <Bot className="w-4 h-4" /> Start Game
+              </button>
+              <button onClick={() => setShowComputer(false)} className="btn-secondary px-4">
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-ccb-muted">
+              Practice against an AI bot. Choose your difficulty level and color.
+            </p>
+            <button onClick={() => setShowComputer(true)} className="btn-secondary w-full flex items-center justify-center gap-2">
+              <Bot className="w-4 h-4" /> Configure Game
+            </button>
+          </>
+        )}
       </div>
 
       {/* Challenge a Friend */}
