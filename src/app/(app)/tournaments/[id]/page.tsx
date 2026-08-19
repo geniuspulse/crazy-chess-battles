@@ -304,9 +304,11 @@ export default async function TournamentDetailPage({
           </h2>
           <div className="space-y-3">
             {[
-              { rank: 1, pct: 50, label: "1st Place", color: "text-ccb-accent" },
-              { rank: 2, pct: 30, label: "2nd Place", color: "text-ccb-silver" },
-              { rank: 3, pct: 20, label: "3rd Place", color: "text-ccb-bronze" },
+              { rank: 1, pct: 40, label: "1st Place", color: "text-ccb-accent" },
+              { rank: 2, pct: 20, label: "2nd Place", color: "text-ccb-silver" },
+              { rank: 3, pct: 18, label: "3rd Place", color: "text-ccb-bronze" },
+              { rank: 4, pct: 12, label: "4th Place", color: "text-ccb-muted" },
+              { rank: 5, pct: 10, label: "5th Place", color: "text-ccb-muted" },
             ].map((tier) => {
               const amount = Math.floor(tournament.prize_pool_cents * (tier.pct / 100));
               return (

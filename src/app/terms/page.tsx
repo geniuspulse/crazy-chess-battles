@@ -47,7 +47,7 @@ export default function TermsPage() {
             <p className="mb-2">CCB hosts competitive chess tournaments with optional entry fees and prize pools.</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>Entry fees are collected into a tournament prize pool before the tournament starts.</li>
-              <li>Prize distribution follows the published breakdown for each tournament (default: 50% for 1st, 30% for 2nd, 20% for 3rd).</li>
+              <li>Prize distribution follows the published breakdown for each tournament (default: 40% for 1st, 20% for 2nd, 18% for 3rd, 12% for 4th, 10% for 5th).</li>
               <li>If a tournament is cancelled, all entry fees are refunded to participants' wallets.</li>
               <li>Players who leave a tournament after it starts forfeit their entry fee.</li>
               <li>Prize winnings are credited to your wallet and can be withdrawn via mobile money.</li>

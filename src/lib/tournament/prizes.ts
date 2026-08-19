@@ -11,6 +11,15 @@ interface ParticipantResult {
   score: number;
 }
 
+// Default payout structure: top 5 players rewarded
+export const DEFAULT_PRIZE_SPLITS = [
+  { rank: 1, percentage: 40 },
+  { rank: 2, percentage: 20 },
+  { rank: 3, percentage: 18 },
+  { rank: 4, percentage: 12 },
+  { rank: 5, percentage: 10 },
+];
+
 /**
  * Distribute prize pool to winners based on tournament's prize_distribution config.
  * Called after tournament.finish() sets final_rank on all participants.
@@ -47,13 +56,8 @@ export async function distributePrizes(
       }
     }
   } else {
-    // Default: top 3 split 50/30/20
-    const defaultSplits = [
-      { rank: 1, percentage: 50 },
-      { rank: 2, percentage: 30 },
-      { rank: 3, percentage: 20 },
-    ];
-    for (const split of defaultSplits) {
+    // Default: top 5 split 40/20/18/12/10
+    for (const split of DEFAULT_PRIZE_SPLITS) {
       const winner = participants.find((p) => p.final_rank === split.rank);
       if (winner) {
         const amount = Math.floor(prizePoolCents * (split.percentage / 100));
