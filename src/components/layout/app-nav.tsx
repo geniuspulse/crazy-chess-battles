@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Swords, Trophy, TrendingUp, User, Wallet, Shield, Clock } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { Home, Swords, Trophy, TrendingUp, User, Wallet, Shield } from "lucide-react";
 
 interface Profile {
   username: string | null;
@@ -15,28 +14,35 @@ interface Profile {
 
 export default function AppNav({ profile }: { profile: Profile | null }) {
   const pathname = usePathname();
-  // Game screens run a fixed, non-scrolling "app mode" layout (like chess.com) —
-  // hide the mobile chrome (header + bottom tab bar) so the game gets the full viewport.
   const isGameRoute = pathname.startsWith("/game/") || pathname.startsWith("/play/computer");
 
+  // 5 links — History accessible from dashboard
   const navItems = [
     { href: "/dashboard", label: "Home", icon: Home },
     { href: "/play", label: "Play", icon: Swords },
     { href: "/tournaments", label: "Tournos", icon: Trophy },
     { href: "/leaderboard", label: "Ranks", icon: TrendingUp },
-    { href: "/history", label: "History", icon: Clock },
+    { href: "/wallet", label: "Wallet", icon: Wallet },
+  ];
+
+  // Desktop nav includes History + Admin
+  const desktopItems = [
+    ...navItems.slice(0, 4),
+    { href: "/history", label: "History", icon: TrendingUp },
     { href: "/wallet", label: "Wallet", icon: Wallet },
     ...(profile?.is_admin ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
   ];
 
   const getRatingTier = (rating: number | null) => {
     if (!rating) return { label: "Unrated", color: "text-ccb-muted" };
-    if (rating >= 2200) return { label: "Master", color: "text-purple-400" };
+    if (rating >= 2400) return { label: "GM", color: "text-purple-400" };
+    if (rating >= 2200) return { label: "Master", color: "text-fuchsia-400" };
     if (rating >= 1900) return { label: "Diamond", color: "text-cyan-400" };
     if (rating >= 1600) return { label: "Platinum", color: "text-emerald-400" };
     if (rating >= 1300) return { label: "Gold", color: "text-ccb-accent" };
     if (rating >= 1000) return { label: "Silver", color: "text-ccb-silver" };
-    return { label: "Bronze", color: "text-ccb-bronze" };
+    if (rating >= 700) return { label: "Bronze", color: "text-ccb-bronze" };
+    return { label: "Rookie", color: "text-ccb-muted" };
   };
 
   const tier = getRatingTier(profile?.rating ?? null);
@@ -54,7 +60,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
               <span className="font-bold">CCB</span>
             </Link>
             <div className="flex items-center gap-1">
-              {navItems.map((item) => {
+              {desktopItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname.startsWith(item.href);
                 return (
@@ -93,7 +99,7 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
         </div>
       </nav>
 
-      {/* Mobile header — compact, just logo + rating + profile. Hidden on game screens. */}
+      {/* Mobile header — compact */}
       {!isGameRoute && (
       <header className="sm:hidden sticky top-0 z-50 border-b border-ccb-border bg-ccb-dark/90 backdrop-blur-md">
         <div className="flex items-center justify-between px-4 h-12">
@@ -121,13 +127,13 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
       </header>
       )}
 
-      {/* Mobile bottom nav — fixed, safe-area aware, won't disappear on scroll. Hidden on game screens. */}
+      {/* Mobile bottom nav — 5 links, tight, active tab indicator */}
       {!isGameRoute && (
       <nav 
         className="fixed bottom-0 left-0 right-0 z-[100] border-t border-ccb-border bg-ccb-surface/95 backdrop-blur-md sm:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       >
-        <div className="flex items-center justify-around h-14 overflow-x-auto no-scrollbar">
+        <div className="flex items-stretch justify-around h-14">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname.startsWith(item.href);
@@ -135,12 +141,16 @@ export default function AppNav({ profile }: { profile: Profile | null }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex flex-col items-center gap-0.5 px-2.5 py-1.5 shrink-0 ${
-                  isActive ? "text-ccb-primary" : "text-ccb-muted"
-                }`}
+                className="flex-1 flex flex-col items-center justify-center gap-0.5 relative"
               >
-                <Icon className="w-4 h-4" />
-                <span className="text-[10px]">{item.label}</span>
+                {/* Active indicator bar */}
+                {isActive && (
+                  <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-ccb-primary" />
+                )}
+                <Icon className={`w-5 h-5 transition-colors ${isActive ? "text-ccb-primary" : "text-ccb-muted"}`} />
+                <span className={`text-[10px] font-medium transition-colors ${isActive ? "text-ccb-primary" : "text-ccb-muted"}`}>
+                  {item.label}
+                </span>
               </Link>
             );
           })}
