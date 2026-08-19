@@ -213,6 +213,7 @@ export default function EarnClient({ berryBalance, userId }: Props) {
               <Cherry className="w-3 h-3 text-red-500" /> Your CCB Balance
             </p>
             <p className="text-3xl font-bold mt-1">{berryBalance.toLocaleString()} 🍒</p>
+            <p className="text-xs text-ccb-muted">≈ MWK {(berryBalance * 0.5).toLocaleString()}</p>
           </div>
           <div className="flex gap-2">
             <a href="/berry-market" className="px-3 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600">
@@ -403,27 +404,27 @@ export default function EarnClient({ berryBalance, userId }: Props) {
         </h3>
         <div className="space-y-1.5 text-xs">
           <div className="flex justify-between">
-            <span className="text-ccb-muted">Win a quick match</span>
+            <span className="text-ccb-muted">Win a quick match (10 CCB = MWK 5)</span>
             <span className="font-medium text-red-500">+{config.berry_daily_login ? 10 : 10} 🍒</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-ccb-muted">Draw a quick match</span>
+            <span className="text-ccb-muted">Draw a quick match (2 CCB = MWK 1)</span>
             <span className="font-medium text-red-500">+2 🍒</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-ccb-muted">3-day login streak</span>
+            <span className="text-ccb-muted">3-day login streak (5 CCB = MWK 2.50)</span>
             <span className="font-medium text-red-500">+{config.berry_streak_3day || 5} 🍒 bonus</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-ccb-muted">7-day login streak</span>
+            <span className="text-ccb-muted">7-day login streak (10 CCB = MWK 5)</span>
             <span className="font-medium text-red-500">+{config.berry_streak_7day || 10} 🍒 bonus</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-ccb-muted">30-day login streak</span>
+            <span className="text-ccb-muted">30-day login streak (50 CCB = MWK 25)</span>
             <span className="font-medium text-red-500">+{config.berry_streak_30day || 50} 🍒 bonus</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-ccb-muted">Friend joins via referral</span>
+            <span className="text-ccb-muted">Friend joins via referral (50 CCB = MWK 25)</span>
             <span className="font-medium text-red-500">+{config.berry_referral_signup || 50} 🍒</span>
           </div>
         </div>

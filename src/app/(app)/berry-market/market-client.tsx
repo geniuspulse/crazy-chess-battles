@@ -34,7 +34,7 @@ export default function BerryMarketClient({ berryBalance, walletBalanceCents, us
 
   // Sell form
   const [sellAmount, setSellAmount] = useState(100);
-  const [sellPrice, setSellPrice] = useState(1000); // MWK total
+  const [sellPrice, setSellPrice] = useState(50); // MWK total (official: 100 CCB = 50 MWK)
   const [sellLoading, setSellLoading] = useState(false);
 
   // Buy state
@@ -187,7 +187,7 @@ export default function BerryMarketClient({ berryBalance, walletBalanceCents, us
           CRAZYCHESSBERRY Market
         </h1>
         <p className="text-sm text-ccb-muted mt-1">
-          Buy and sell CCB — the virtual currency of Crazy Chess Battles
+          Buy and sell CCB 🍒 — Official rate: 1 CCB = MWK 0.50 (100 CCB = MWK 50)
         </p>
       </div>
 
@@ -205,6 +205,20 @@ export default function BerryMarketClient({ berryBalance, walletBalanceCents, us
         </div>
       </div>
 
+      {/* Official Rate Banner */}
+      <div className="card p-3 flex items-center justify-between bg-ccb-surface">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-ccb-primary" />
+          <div>
+            <p className="text-xs font-medium">Official Rate: 1 CCB = MWK 0.50</p>
+            <p className="text-xs text-ccb-muted">List above or below — trades are P2P from wallet balances</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-xs text-ccb-muted">Your CCB value</p>
+          <p className="text-sm font-bold text-red-500">MWK {(berryBalance * 0.5).toFixed(0)}</p>
+        </div>
+      </div>
       {/* Messages */}
       {success && (
         <div className="rounded-lg bg-green-500/10 border border-green-500/30 text-green-600 px-4 py-3 text-sm flex items-center gap-2">
@@ -283,6 +297,17 @@ export default function BerryMarketClient({ berryBalance, walletBalanceCents, us
                       </div>
                       <p className="text-xs text-ccb-muted mt-0.5">
                         by {listing.seller_name} • {listing.unit_price_formatted}/berry
+                      {(() => {
+                        const listUnitMWK = (listing.price_cents / listing.amount) / 100;
+                        const diff = listUnitMWK - 0.5;
+                        const pct = ((diff / 0.5) * 100).toFixed(0);
+                        if (Math.abs(parseFloat(pct)) < 5) return null;
+                        return (
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${diff < 0 ? "bg-green-500/10 text-green-600" : "bg-orange-500/10 text-orange-500"}`}>
+                            {diff < 0 ? "↓" : "↑"} {Math.abs(parseFloat(pct))}% vs official
+                          </span>
+                        );
+                      })()}
                       </p>
                     </div>
                     <div className="text-right">
@@ -358,7 +383,7 @@ export default function BerryMarketClient({ berryBalance, walletBalanceCents, us
               className="w-full px-4 py-3 rounded-xl bg-ccb-surface border border-ccb-border text-lg font-semibold"
             />
             <p className="text-xs text-ccb-muted mt-1">
-              Price per berry: MWK {sellUnitPrice} • 
+              Price per berry: MWK {sellUnitPrice} • Official: MWK 0.50/berry • 
               You earn MWK <span className="font-medium">{sellPrice.toLocaleString()}</span> when sold
             </p>
           </div>
@@ -366,9 +391,9 @@ export default function BerryMarketClient({ berryBalance, walletBalanceCents, us
           {/* Quick price suggestions */}
           <div className="flex gap-2 flex-wrap">
             {[
-              { label: "Cheap", amount: 100, price: 500 },
-              { label: "Fair", amount: 100, price: 1000 },
-              { label: "Premium", amount: 100, price: 2000 },
+              { label: "Below Rate", amount: 100, price: 300 },
+              { label: "Official Rate", amount: 100, price: 500 },
+              { label: "Above Rate", amount: 100, price: 800 },
             ].map((preset) => (
               <button
                 key={preset.label}
