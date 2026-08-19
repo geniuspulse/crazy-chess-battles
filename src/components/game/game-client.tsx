@@ -15,6 +15,7 @@ import VictoryOverlay, { type GameOutcome } from "./victory-overlay";
 import PromotionDialog from "./promotion-dialog";
 import BoardThemePicker from "./board-theme-picker";
 import QuickReactions from "./quick-reactions";
+import OpeningBadge from "./opening-badge";
 
 interface GameClientProps {
   gameId: string;
@@ -56,6 +57,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const [pendingPromotion, setPendingPromotion] = useState<{ from: string; to: string } | null>(null);
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [legalMoveSquares, setLegalMoveSquares] = useState<string[]>([]);
+  const [premove, setPremove] = useState<{ from: string; to: string } | null>(null);
   const lastFenRef = useRef(game.fen);
   const soundPlayedForEnd = useRef(false);
   const prevFenRef = useRef(game.fen);
@@ -152,8 +154,21 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         background: "radial-gradient(circle, rgba(139,92,246,0.4) 70%, transparent 72%)",
       };
     }
+    // Premove highlight — amber
+    if (premove) {
+      styles[premove.from] = {
+        ...styles[premove.from],
+        background: "radial-gradient(circle, rgba(251,191,36,0.4) 70%, transparent 72%)",
+        boxShadow: "inset 0 0 0 3px rgba(251,191,36,0.6)",
+      };
+      styles[premove.to] = {
+        ...styles[premove.to],
+        background: "radial-gradient(circle, rgba(251,191,36,0.35) 70%, transparent 72%)",
+        boxShadow: "inset 0 0 0 3px rgba(251,191,36,0.5)",
+      };
+    }
     return styles;
-  }, [lastMove, checkSquare, legalMoveSquares, selectedSquare]);
+  }, [lastMove, checkSquare, legalMoveSquares, selectedSquare, premove]);
 
   const getLiveClock = (player: "white" | "black") => {
     if (!game.last_move_at || !game.white_clock_ms || !game.black_clock_ms) return "—";
@@ -220,31 +235,65 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
     }
   }, [selectedSquare, legalMoveSquares, isPromotionMove, fen, makeMove]);
 
+  // Auto-execute premove when it becomes our turn
+  useEffect(() => {
+    if (myTurn && premove && !gameEnded) {
+      try {
+        const game = new Chess(fen);
+        const move = game.move({ from: premove.from, to: premove.to, promotion: "q" });
+        if (move !== null) {
+          if (isPromotionMove(premove.from, premove.to)) {
+            setPendingPromotion({ from: premove.from, to: premove.to });
+          } else {
+            setFen(game.fen());
+            setMoveHistory(game.history());
+            setLastMove({ from: premove.from, to: premove.to });
+            playSound(detectMoveSound(move));
+            makeMove(premove.from, premove.to);
+          }
+        }
+      } catch {}
+      setPremove(null);
+    }
+  }, [myTurn, premove, fen, gameEnded, isPromotionMove, makeMove]);
+
   const onDrop = useCallback(
     (sourceSquare: string, targetSquare: string): boolean => {
-      if (isSpectator || !myTurn || gameEnded) return false;
-      if (isPromotionMove(sourceSquare, targetSquare)) {
-        setPendingPromotion({ from: sourceSquare, to: targetSquare });
-        return false;
-      }
-      try {
-        const tempGame = new Chess(fen);
-        const move = tempGame.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
-        if (move === null) return false;
-        setFen(tempGame.fen());
-        setMoveHistory(tempGame.history());
-        setLastMove({ from: sourceSquare, to: targetSquare });
-        playSound(detectMoveSound(move));
-        if (tempGame.inCheck() && !tempGame.isCheckmate()) {
-          setTimeout(() => playSound("check"), 100);
+      if (isSpectator || gameEnded) return false;
+      // If it's our turn, make the real move
+      if (myTurn) {
+        if (isPromotionMove(sourceSquare, targetSquare)) {
+          setPendingPromotion({ from: sourceSquare, to: targetSquare });
+          return false;
         }
-      } catch {
-        return false;
+        try {
+          const tempGame = new Chess(fen);
+          const move = tempGame.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
+          if (move === null) return false;
+          setFen(tempGame.fen());
+          setMoveHistory(tempGame.history());
+          setLastMove({ from: sourceSquare, to: targetSquare });
+          playSound(detectMoveSound(move));
+          if (tempGame.inCheck() && !tempGame.isCheckmate()) {
+            setTimeout(() => playSound("check"), 100);
+          }
+        } catch {
+          return false;
+        }
+        makeMove(sourceSquare, targetSquare);
+        return true;
       }
-      makeMove(sourceSquare, targetSquare);
+      // Not our turn — set a premove
+      if (!targetSquare) return false;
+      const game = new Chess(fen);
+      const piece = game.get(sourceSquare as any);
+      if (!piece) return false;
+      const isMyPiece = (isWhite && piece.color === "w") || (isBlack && piece.color === "b");
+      if (!isMyPiece) return false;
+      setPremove({ from: sourceSquare, to: targetSquare });
       return true;
     },
-    [isSpectator, myTurn, gameEnded, fen, makeMove, isPromotionMove]
+    [isSpectator, myTurn, gameEnded, fen, makeMove, isPromotionMove, isWhite, isBlack]
   );
 
   // Handle promotion selection
@@ -326,6 +375,9 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
             squareStyles: squareStyles,
             showAnimations: true,
             animationDurationInMs: 300,
+            showNotation: true,
+            darkSquareNotationStyle: { color: boardTheme.light, fontSize: "10px", fontWeight: 600 },
+            lightSquareNotationStyle: { color: boardTheme.dark, fontSize: "10px", fontWeight: 600 },
             darkSquareStyle: { backgroundColor: boardTheme.dark },
             lightSquareStyle: { backgroundColor: boardTheme.light },
             boardStyle: { borderRadius: "8px", overflow: "hidden" },
@@ -352,7 +404,10 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
             <BoardThemePicker onThemeChange={setBoardTheme} />
           </div>
         </div>
-        <MoveHistory moves={moveHistory} />
+        {/* Opening detection */}
+      {moveHistory.length >= 2 && <OpeningBadge moves={moveHistory} />}
+
+      <MoveHistory moves={moveHistory} />
         <div className="text-center text-xs text-ccb-muted">
           Move {game.move_count} · {game.time_control} · {game.rated ? "Ranked" : "Casual"}
         </div>
@@ -412,10 +467,13 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
             if (!targetSquare) return false;
             return onDrop(sourceSquare, targetSquare);
           },
-          allowDragging: myTurn && !gameEnded,
+          allowDragging: !gameEnded && !isSpectator,
           squareStyles: squareStyles,
           showAnimations: true,
           animationDurationInMs: 300,
+          showNotation: true,
+          darkSquareNotationStyle: { color: boardTheme.light, fontSize: "10px", fontWeight: 600 },
+          lightSquareNotationStyle: { color: boardTheme.dark, fontSize: "10px", fontWeight: 600 },
           onPieceClick: handlePieceClick,
           onSquareClick: handleSquareClick,
           darkSquareStyle: { backgroundColor: boardTheme.dark },

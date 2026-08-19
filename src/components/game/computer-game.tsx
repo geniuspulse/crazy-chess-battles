@@ -15,6 +15,7 @@ import VictoryOverlay, { type GameOutcome } from "./victory-overlay";
 import PromotionDialog from "./promotion-dialog";
 import BoardThemePicker from "./board-theme-picker";
 import QuickReactions from "./quick-reactions";
+import OpeningBadge from "./opening-badge";
 
 interface ComputerGameProps {
   difficulty: AIDifficulty;
@@ -64,6 +65,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   const [pendingPromotion, setPendingPromotion] = useState<{ from: string; to: string } | null>(null);
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [legalMoveSquares, setLegalMoveSquares] = useState<string[]>([]);
+  const [premove, setPremove] = useState<{ from: string; to: string } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const soundPlayedForEnd = useRef(false);
 
@@ -101,8 +103,21 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
         background: "radial-gradient(circle, rgba(139,92,246,0.4) 70%, transparent 72%)",
       };
     }
+    // Premove highlight — amber/orange
+    if (premove) {
+      styles[premove.from] = {
+        ...styles[premove.from],
+        background: "radial-gradient(circle, rgba(251,191,36,0.4) 70%, transparent 72%)",
+        boxShadow: "inset 0 0 0 3px rgba(251,191,36,0.6)",
+      };
+      styles[premove.to] = {
+        ...styles[premove.to],
+        background: "radial-gradient(circle, rgba(251,191,36,0.35) 70%, transparent 72%)",
+        boxShadow: "inset 0 0 0 3px rgba(251,191,36,0.5)",
+      };
+    }
     return styles;
-  }, [lastMove, checkSquare, legalMoveSquares, selectedSquare]);
+  }, [lastMove, checkSquare, legalMoveSquares, selectedSquare, premove]);
 
   // Live clock tick
   useEffect(() => {
@@ -203,6 +218,26 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   }, [fen]);
 
 
+  // Auto-execute premove when it becomes our turn
+  useEffect(() => {
+    if (isPlayerTurn && premove && !gameEnded) {
+      // Verify the premove is still legal
+      try {
+        const game = new Chess(fen);
+        const move = game.move({ from: premove.from, to: premove.to, promotion: "q" });
+        if (move !== null) {
+          // Check promotion
+          if (isPromotionMove(premove.from, premove.to)) {
+            setPendingPromotion({ from: premove.from, to: premove.to });
+          } else {
+            applyMove(premove.from, premove.to, "q");
+          }
+        }
+      } catch {}
+      setPremove(null);
+    }
+  }, [isPlayerTurn, premove, fen, gameEnded, applyMove, isPromotionMove]);
+
   // Handle piece click — show legal moves
   const handlePieceClick = useCallback(({ square, piece }: { square: string | null; piece: { pieceType: string } | null }) => {
     if (!isPlayerTurn || gameEnded) return;
@@ -242,14 +277,27 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
 
   // Player drop handler — intercept promotions
   const onDrop = useCallback((sourceSquare: string, targetSquare: string): boolean => {
-    if (!isPlayerTurn || gameEnded) return false;
-    // Check if this is a promotion move
-    if (isPromotionMove(sourceSquare, targetSquare)) {
-      setPendingPromotion({ from: sourceSquare, to: targetSquare });
-      return false; // don't apply yet — wait for user selection
+    if (gameEnded) return false;
+    // If it's our turn, make the real move
+    if (isPlayerTurn) {
+      // Check if this is a promotion move
+      if (isPromotionMove(sourceSquare, targetSquare)) {
+        setPendingPromotion({ from: sourceSquare, to: targetSquare });
+        return false; // don't apply yet — wait for user selection
+      }
+      return applyMove(sourceSquare, targetSquare, "q");
     }
-    return applyMove(sourceSquare, targetSquare, "q");
-  }, [isPlayerTurn, gameEnded, isPromotionMove, applyMove]);
+    // Not our turn — set a premove
+    if (!targetSquare) return false;
+    // Verify it's our piece being moved
+    const game = new Chess(fen);
+    const piece = game.get(sourceSquare as any);
+    if (!piece) return false;
+    const isMyPiece = (isPlayerWhite && piece.color === "w") || (!isPlayerWhite && piece.color === "b");
+    if (!isMyPiece) return false;
+    setPremove({ from: sourceSquare, to: targetSquare });
+    return true;
+  }, [isPlayerTurn, gameEnded, isPromotionMove, applyMove, fen, isPlayerWhite]);
 
   // Handle promotion selection
   const handlePromotionSelect = useCallback((piece: "q" | "r" | "b" | "n") => {
@@ -276,6 +324,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     setLastMove(null);
     setSelectedSquare(null);
     setLegalMoveSquares([]);
+    setPremove(null);
     setWhiteClock(initialMinutes * 60 * 1000);
     setBlackClock(initialMinutes * 60 * 1000);
     setLastMoveAt(Date.now());
@@ -354,10 +403,13 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
             if (!targetSquare) return false;
             return onDrop(sourceSquare, targetSquare);
           },
-          allowDragging: isPlayerTurn && !gameEnded,
+          allowDragging: !gameEnded,
           squareStyles: squareStyles,
           showAnimations: true,
           animationDurationInMs: 300,
+          showNotation: true,
+          darkSquareNotationStyle: { color: boardTheme.light, fontSize: "10px", fontWeight: 600 },
+          lightSquareNotationStyle: { color: boardTheme.dark, fontSize: "10px", fontWeight: 600 },
           onPieceClick: handlePieceClick,
           onSquareClick: handleSquareClick,
           darkSquareStyle: { backgroundColor: boardTheme.dark },
@@ -428,6 +480,9 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
         <Bot className="w-4 h-4 text-ccb-primary" />
         <span className="text-sm text-ccb-muted">{aiThinking ? "Thinking..." : DIFFICULTY_LABELS[difficulty]}</span>
       </div>
+
+      {/* Opening detection */}
+      {moveHistory.length >= 2 && <OpeningBadge moves={moveHistory} />}
 
       {/* Move history */}
       <MoveHistory moves={moveHistory} />
