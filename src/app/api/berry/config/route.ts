@@ -5,6 +5,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 /**
  * Public berry config endpoint for the wallet page.
  * Returns only display-relevant fields (no admin-only data).
+ *
+ * Rate: 1000 berries = MWK 500 (100 berries = MWK 50 = 5000 cents)
+ * Minimum redemption: 10,000 berries
  */
 export async function GET() {
   try {
@@ -20,16 +23,16 @@ export async function GET() {
       .single();
 
     return NextResponse.json(config || {
-      berry_value_cents: 1000,
-      min_redemption: 1000,
+      berry_value_cents: 5000,
+      min_redemption: 10000,
       enabled: true,
       berries_per_win: 10,
       berries_per_draw: 2,
     });
   } catch {
     return NextResponse.json({
-      berry_value_cents: 1000,
-      min_redemption: 1000,
+      berry_value_cents: 5000,
+      min_redemption: 10000,
       enabled: true,
       berries_per_win: 10,
       berries_per_draw: 2,

@@ -53,6 +53,7 @@ interface WalletClientProps {
 }
 
 const QUICK_AMOUNTS = [500, 1000, 2000, 5000, 10000, 25000];
+const WITHDRAW_AMOUNTS = [10000, 15000, 20000, 25000, 50000];
 
 const OPERATORS = [
   { id: "27494cb5-ba9e-437f-a114-4e7a7686bcca", name: "TNM Mpamba", color: "bg-blue-500" },
@@ -84,7 +85,7 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<"deposit" | "withdraw" | "history">("deposit");
   const [depositAmount, setDepositAmount] = useState(1000);
-  const [withdrawAmount, setWithdrawAmount] = useState(1000);
+  const [withdrawAmount, setWithdrawAmount] = useState(10000);
   const [method, setMethod] = useState<"mobile_money" | "card">("mobile_money");
   const [phone, setPhone] = useState(savedPhone || "");
   const [operator, setOperator] = useState(OPERATORS[0].id);
@@ -96,13 +97,13 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
   const [pendingChargeId, setPendingChargeId] = useState<string | null>(null);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [withdrawLoading, setWithdrawLoading] = useState(false);
-  const [redeemAmount, setRedeemAmount] = useState(1000);
+  const [redeemAmount, setRedeemAmount] = useState(10000);
   const [redeemLoading, setRedeemLoading] = useState(false);
   const [berries, setBerries] = useState(berryBalance);
   const [balance, setBalance] = useState(balanceCents);
   const [berryConfig, setBerryConfig] = useState<BerryConfig>({
-    berry_value_cents: 1000,
-    min_redemption: 1000,
+    berry_value_cents: 5000,
+    min_redemption: 10000,
     enabled: true,
     berries_per_win: 10,
     berries_per_draw: 2,
@@ -319,6 +320,11 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
         setWithdrawLoading(false);
         return;
       }
+      if (withdrawAmount < 10000) {
+        setError("Minimum withdrawal is MWK 10,000");
+        setWithdrawLoading(false);
+        return;
+      }
       if (withdrawAmount * 100 > balance) {
         setError("Insufficient balance");
         setWithdrawLoading(false);
@@ -458,7 +464,7 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
                 </button>
               </div>
               <p className="text-xs text-ccb-muted">
-                = {formatMWK(redeemCashValue)} to wallet · 100🍒 = {formatMWK(berryConfig.berry_value_cents)}
+                = {formatMWK(redeemCashValue)} to wallet · 1000🍒 = MWK 500
               </p>
             </div>
           )}
@@ -637,11 +643,11 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
             <input
               type="number"
               value={withdrawAmount}
-              onChange={(e) => setWithdrawAmount(Math.max(100, parseInt(e.target.value) || 0))}
+              onChange={(e) => setWithdrawAmount(Math.max(10000, parseInt(e.target.value) || 0))}
               className="w-full px-4 py-3 rounded-xl bg-ccb-surface border border-ccb-border text-lg font-semibold"
             />
             <div className="flex gap-2 mt-2 flex-wrap">
-              {QUICK_AMOUNTS.map((amt) => (
+              {WITHDRAW_AMOUNTS.map((amt) => (
                 <button
                   key={amt}
                   onClick={() => setWithdrawAmount(amt)}
@@ -654,7 +660,7 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
               ))}
             </div>
             <p className="text-xs text-ccb-muted mt-2">
-              Available: {formatMWK(balance)} · Min: MWK 10
+              Available: {formatMWK(balance)} · Min: MWK 10,000
             </p>
           </div>
 

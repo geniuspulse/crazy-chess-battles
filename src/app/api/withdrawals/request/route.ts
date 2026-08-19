@@ -10,8 +10,9 @@ export async function POST(req: NextRequest) {
 
     const { amountCents, phone, operatorRefId, operatorName } = await req.json();
 
-    if (!amountCents || amountCents < 1000) {
-      return NextResponse.json({ error: "Minimum withdrawal is MWK 10" }, { status: 400 });
+    // Minimum withdrawal is MWK 10,000 (1,000,000 cents)
+    if (!amountCents || amountCents < 1000000) {
+      return NextResponse.json({ error: "Minimum withdrawal is MWK 10,000" }, { status: 400 });
     }
     if (!phone || !operatorRefId || !operatorName) {
       return NextResponse.json({ error: "Phone, operator required" }, { status: 400 });

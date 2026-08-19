@@ -12,9 +12,11 @@ export default async function WalletPage() {
     redirect("/login?redirect=/wallet");
   }
 
+  // Only select columns that actually exist on the profiles table.
+  // email comes from auth.users (user.email), not profiles.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("wallet_balance_cents, berry_balance, username, display_name, email, phone")
+    .select("wallet_balance_cents, berry_balance, username, display_name")
     .eq("id", user.id)
     .single();
 
@@ -37,9 +39,9 @@ export default async function WalletPage() {
     <WalletClient
       balanceCents={profile?.wallet_balance_cents || 0}
       berryBalance={profile?.berry_balance || 0}
-      email={profile?.email || user.email || ""}
+      email={user.email || ""}
       deposits={deposits}
-      phone={profile?.phone || null}
+      phone={null}
     />
   );
 }
