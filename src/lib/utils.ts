@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatRating(rating: number): string {
-  return rating >= 2200 ? `${rating} ★` : `${rating}`;
+  return rating >= 2400 ? `${rating} ★` : `${rating}`;
 }
 
 export function getRatingTier(rating: number): { label: string; color: string } {
