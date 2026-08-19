@@ -1,0 +1,121 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+/**
+ * Unified transaction history for the wallet page.
+ * Combines deposits, withdrawals, and battle payouts into a single timeline.
+ */
+export async function GET(req: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const admin = createAdminClient();
+    const url = new URL(req.url);
+    const limit = parseInt(url.searchParams.get("limit") || "50");
+
+    type Txn = {
+      id: string;
+      type: "deposit" | "withdrawal" | "battle_payout" | "battle_stake" | "berry_redeem" | "tournament_entry" | "tournament_prize";
+      amount_cents: number;
+      status: string;
+      description: string;
+      created_at: string;
+    };
+
+    const transactions: Txn[] = [];
+
+    // Fetch deposits (non-fatal)
+    try {
+      const { data: deposits } = await admin
+        .from("deposits")
+        .select("id, amount_cents, status, method, created_at, reference")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      for (const d of deposits || []) {
+        transactions.push({
+          id: d.id,
+          type: "deposit",
+          amount_cents: d.amount_cents,
+          status: d.status,
+          description: d.method === "mobile_money" ? "Mobile Money deposit" : d.method === "card" ? "Card deposit" : `Deposit (${d.method || "unknown"})`,
+          created_at: d.created_at,
+        });
+      }
+    } catch {}
+
+    // Fetch withdrawals (non-fatal)
+    try {
+      const { data: withdrawals } = await admin
+        .from("withdrawals")
+        .select("id, amount_cents, status, operator_name, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      for (const w of withdrawals || []) {
+        transactions.push({
+          id: w.id,
+          type: "withdrawal",
+          amount_cents: -w.amount_cents,
+          status: w.status,
+          description: `Withdrawal via ${w.operator_name || "mobile money"}`,
+          created_at: w.created_at,
+        });
+      }
+    } catch {}
+
+    // Fetch battle payouts (from deposits table where method = battle_payout)
+    try {
+      const { data: battlePayouts } = await admin
+        .from("deposits")
+        .select("id, amount_cents, status, reference, created_at")
+        .eq("user_id", user.id)
+        .eq("method", "battle_payout")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      for (const b of battlePayouts || []) {
+        transactions.push({
+          id: b.id,
+          type: "battle_payout",
+          amount_cents: b.amount_cents,
+          status: b.status,
+          description: b.reference || "Battle winnings",
+          created_at: b.created_at,
+        });
+      }
+    } catch {}
+
+    // Fetch berry redemption records (from deposits table where method = berry_redemption)
+    try {
+      const { data: berryRedemptions } = await admin
+        .from("deposits")
+        .select("id, amount_cents, status, reference, created_at")
+        .eq("user_id", user.id)
+        .eq("method", "berry_redemption")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      for (const b of berryRedemptions || []) {
+        transactions.push({
+          id: b.id,
+          type: "berry_redeem",
+          amount_cents: b.amount_cents,
+          status: b.status,
+          description: b.reference || "Berry redemption",
+          created_at: b.created_at,
+        });
+      }
+    } catch {}
+
+    // Sort all by date descending
+    transactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return NextResponse.json({
+      transactions: transactions.slice(0, limit),
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: "Failed to fetch transactions" }, { status: 500 });
+  }
+}

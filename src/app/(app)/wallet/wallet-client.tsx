@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Wallet, Smartphone, CreditCard, Check, Loader2, ArrowDown, ArrowUp, Clock, Cherry, ExternalLink, Gift } from "lucide-react";
+import {
+  Wallet, Smartphone, CreditCard, Check, Loader2, ArrowDown, ArrowUp,
+  Clock, Cherry, Gift, RefreshCw, History, TrendingUp, TrendingDown,
+} from "lucide-react";
 import Link from "next/link";
 
 interface Deposit {
@@ -24,6 +27,23 @@ interface Withdrawal {
   created_at: string;
 }
 
+interface Transaction {
+  id: string;
+  type: string;
+  amount_cents: number;
+  status: string;
+  description: string;
+  created_at: string;
+}
+
+interface BerryConfig {
+  berry_value_cents: number;
+  min_redemption: number;
+  enabled: boolean;
+  berries_per_win: number;
+  berries_per_draw: number;
+}
+
 interface WalletClientProps {
   balanceCents: number;
   berryBalance: number;
@@ -33,19 +53,38 @@ interface WalletClientProps {
 }
 
 const QUICK_AMOUNTS = [500, 1000, 2000, 5000, 10000, 25000];
-const BERRY_VALUE_CENTS = 1000; // 100 berries = MWK 1,000
-const MIN_REDEEM_BERRIES = 1000;
 
 const OPERATORS = [
   { id: "27494cb5-ba9e-437f-a114-4e7a7686bcca", name: "TNM Mpamba", color: "bg-blue-500" },
   { id: "20be6c20-adeb-4b5b-a7ba-0769820df4fb", name: "Airtel Money", color: "bg-red-500" },
 ];
 
+const TXN_ICONS: Record<string, any> = {
+  deposit: ArrowDown,
+  withdrawal: ArrowUp,
+  battle_payout: TrendingUp,
+  battle_stake: TrendingDown,
+  berry_redeem: Cherry,
+  tournament_entry: TrendingDown,
+  tournament_prize: TrendingUp,
+};
+
+const TXN_COLORS: Record<string, string> = {
+  deposit: "text-ccb-success",
+  withdrawal: "text-ccb-accent",
+  battle_payout: "text-ccb-success",
+  battle_stake: "text-ccb-danger",
+  berry_redeem: "text-red-500",
+  tournament_entry: "text-ccb-danger",
+  tournament_prize: "text-ccb-success",
+};
+
 export default function WalletClient({ balanceCents, berryBalance, email, deposits, phone: savedPhone }: WalletClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [tab, setTab] = useState<"deposit" | "withdraw">("deposit");
-  const [amount, setAmount] = useState(1000);
+  const [tab, setTab] = useState<"deposit" | "withdraw" | "history">("deposit");
+  const [depositAmount, setDepositAmount] = useState(1000);
+  const [withdrawAmount, setWithdrawAmount] = useState(1000);
   const [method, setMethod] = useState<"mobile_money" | "card">("mobile_money");
   const [phone, setPhone] = useState(savedPhone || "");
   const [operator, setOperator] = useState(OPERATORS[0].id);
@@ -60,7 +99,29 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
   const [redeemAmount, setRedeemAmount] = useState(1000);
   const [redeemLoading, setRedeemLoading] = useState(false);
   const [berries, setBerries] = useState(berryBalance);
+  const [balance, setBalance] = useState(balanceCents);
+  const [berryConfig, setBerryConfig] = useState<BerryConfig>({
+    berry_value_cents: 1000,
+    min_redemption: 1000,
+    enabled: true,
+    berries_per_win: 10,
+    berries_per_draw: 2,
+  });
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [txnLoading, setTxnLoading] = useState(false);
 
+  // Fetch berry config from server
+  useEffect(() => {
+    fetch("/api/berry/config")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.berry_value_cents) setBerryConfig(data);
+        if (data.min_redemption) setRedeemAmount(data.min_redemption);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Fetch operators
   useEffect(() => {
     fetch("/api/payments/operators")
       .then((res) => res.json())
@@ -80,6 +141,7 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
       .catch(() => {});
   }, []);
 
+  // Fetch withdrawals
   useEffect(() => {
     fetch("/api/withdrawals/list")
       .then((res) => res.json())
@@ -89,6 +151,22 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
       .catch(() => {});
   }, []);
 
+  // Fetch transaction history
+  const fetchTransactions = useCallback(async () => {
+    setTxnLoading(true);
+    try {
+      const res = await fetch("/api/wallet/transactions?limit=50");
+      const data = await res.json();
+      if (data.transactions) setTransactions(data.transactions);
+    } catch {}
+    finally { setTxnLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "history") fetchTransactions();
+  }, [tab, fetchTransactions]);
+
+  // Payment verification polling (from redirect)
   useEffect(() => {
     const txRef = searchParams.get("tx_ref");
     if (txRef) {
@@ -102,9 +180,11 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
           });
           const data = await res.json();
           if (data.status === "success") {
-            setSuccess(`MWK ${Math.floor(data.amount / 100).toLocaleString()} added to your wallet!`);
+            const amt = Math.floor(data.amount / 100).toLocaleString();
+            setSuccess(`MWK ${amt} added to your wallet!`);
             setPolling(false);
             clearInterval(interval);
+            setBalance((prev) => prev + data.amount);
             router.refresh();
           } else if (data.status === "failed") {
             setError("Payment failed. Please try again.");
@@ -126,6 +206,7 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
     }
   }, [searchParams, router]);
 
+  // Payment verification polling (from mobile money push)
   useEffect(() => {
     if (!pendingChargeId) return;
 
@@ -140,10 +221,12 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
         const data = await res.json();
 
         if (data.status === "success") {
-          setSuccess(`MWK ${Math.floor(data.amount / 100).toLocaleString()} added to your wallet!`);
+          const amt = Math.floor(data.amount / 100).toLocaleString();
+          setSuccess(`MWK ${amt} added to your wallet!`);
           setPolling(false);
           setPendingChargeId(null);
           clearInterval(interval);
+          setBalance((prev) => prev + data.amount);
           router.refresh();
         } else if (data.status === "failed") {
           setError("Payment failed or timed out. Please try again.");
@@ -186,7 +269,7 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            amountCents: amount * 100,
+            amountCents: depositAmount * 100,
             phone,
             operatorRefId: operator,
             email,
@@ -205,7 +288,7 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
         const res = await fetch("/api/payments/deposit/card", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amountCents: amount * 100, email }),
+          body: JSON.stringify({ amountCents: depositAmount * 100, email }),
         });
 
         const data = await res.json();
@@ -236,7 +319,7 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
         setWithdrawLoading(false);
         return;
       }
-      if (amount * 100 > balanceCents) {
+      if (withdrawAmount * 100 > balance) {
         setError("Insufficient balance");
         setWithdrawLoading(false);
         return;
@@ -248,7 +331,7 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amountCents: amount * 100,
+          amountCents: withdrawAmount * 100,
           phone,
           operatorRefId: operator,
           operatorName: opName,
@@ -261,9 +344,12 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
         throw new Error(data.error || "Withdrawal failed. Please try again.");
       }
 
-      setSuccess(`Withdrawal request for MWK ${amount.toLocaleString()} submitted. You'll receive it within 24 hours after admin approval.`);
+      // Optimistically update balance
+      setBalance((prev) => prev - withdrawAmount * 100);
+      setSuccess(`Withdrawal request for MWK ${withdrawAmount.toLocaleString()} submitted. You'll receive it within 24 hours after admin approval.`);
       router.refresh();
 
+      // Refresh withdrawal list
       fetch("/api/withdrawals/list")
         .then((r) => r.json())
         .then((d) => { if (d.withdrawals) setWithdrawals(d.withdrawals); });
@@ -280,8 +366,8 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
     setSuccess(null);
 
     try {
-      if (redeemAmount < MIN_REDEEM_BERRIES) {
-        setError(`Minimum redemption is ${MIN_REDEEM_BERRIES} berries`);
+      if (redeemAmount < berryConfig.min_redemption) {
+        setError(`Minimum redemption is ${berryConfig.min_redemption} berries`);
         setRedeemLoading(false);
         return;
       }
@@ -304,6 +390,7 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
       }
 
       setBerries(data.newBerryBalance);
+      setBalance((prev) => prev + data.cashCents);
       setSuccess(`Redeemed ${data.berriesRedeemed} berries for ${data.cashFormatted}! Added to your wallet.`);
       router.refresh();
     } catch (err: any) {
@@ -313,96 +400,88 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
     }
   };
 
-  const redeemCashValue = Math.round((redeemAmount / 100) * BERRY_VALUE_CENTS);
+  const redeemCashValue = Math.round((redeemAmount / 100) * berryConfig.berry_value_cents);
+  const formatMWK = (cents: number) => `MWK ${Math.floor((cents || 0) / 100).toLocaleString()}`;
+  const formatDate = (d: string) => new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
   return (
-    <div className="space-y-4 sm:space-y-6 max-w-2xl mx-auto pb-20 sm:pb-0">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
-          <Wallet className="w-6 h-6 text-ccb-primary" />
-          Wallet
-        </h1>
-        <p className="text-sm text-ccb-muted mt-1">Deposit, withdraw, and manage your funds</p>
-      </div>
-
+    <div className="space-y-4 pb-20 sm:pb-0">
       {/* Balance Card */}
-      <div className="card bg-gradient-to-br from-ccb-primary/10 to-ccb-surface border-ccb-primary/20">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-ccb-muted uppercase tracking-wide">Wallet Balance</p>
-            <p className="text-3xl font-bold mt-1">MWK {Math.floor(balanceCents / 100).toLocaleString()}</p>
-          </div>
-          <div className="w-14 h-14 rounded-full bg-ccb-primary/10 flex items-center justify-center">
-            <Wallet className="w-7 h-7 text-ccb-primary" />
-          </div>
-        </div>
-      </div>
-
-      {/* Berry Card */}
-      <div className="card bg-gradient-to-br from-red-500/10 to-ccb-surface border-red-500/20">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <p className="text-xs text-ccb-muted uppercase tracking-wide flex items-center gap-1">
-              <Cherry className="w-3.5 h-3.5 text-red-500" />
-              Berry Balance
-            </p>
-            <p className="text-3xl font-bold mt-1">{berries.toLocaleString()} 🍒</p>
-            <p className="text-xs text-ccb-muted mt-1">
-              Win quick matches to earn CCB • Redeem at 1000+ or sell on the market
-            </p>
-          </div>
-          <div className="w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center">
-            <Cherry className="w-7 h-7 text-red-500" />
-          </div>
-        </div>
-
-        {/* Redeem section */}
-        {berries >= MIN_REDEEM_BERRIES && (
-          <div className="mt-3 pt-3 border-t border-red-500/10">
-            <div className="flex items-center gap-2 mb-2">
-              <input
-                type="number"
-                value={redeemAmount}
-                onChange={(e) => setRedeemAmount(Math.max(0, parseInt(e.target.value) || 0))}
-                min={MIN_REDEEM_BERRIES}
-                max={berries}
-                step={10}
-                className="flex-1 px-3 py-2 rounded-lg bg-ccb-surface border border-ccb-border text-sm"
-                placeholder="Berries to redeem"
-              />
-              <button
-                onClick={handleRedeemBerries}
-                disabled={redeemLoading || redeemAmount < MIN_REDEEM_BERRIES || redeemAmount > berries}
-                className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-              >
-                {redeemLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                Redeem
-              </button>
+      <div className="card relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-ccb-primary/5 rounded-full -translate-y-16 translate-x-16" />
+        <div className="relative">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Wallet className="w-5 h-5 text-ccb-primary" />
+              <span className="text-sm text-ccb-muted">Wallet Balance</span>
             </div>
-            <p className="text-xs text-ccb-muted">
-              = MWK {Math.floor(redeemCashValue / 100).toLocaleString()} to wallet
-            </p>
+            <button
+              onClick={() => router.refresh()}
+              className="text-ccb-muted hover:text-ccb-text transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
           </div>
-        )}
+          <p className="text-3xl font-bold">{formatMWK(balance)}</p>
 
-        {berries < MIN_REDEEM_BERRIES && (
-          <div className="text-xs text-ccb-muted mt-2 pt-2 border-t border-red-500/10">
-            <p>Win {MIN_REDEEM_BERRIES - berries} more CCB to unlock cash redemption</p>
+          {/* Berry balance */}
+          <div className="mt-3 pt-3 border-t border-ccb-border flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Cherry className="w-4 h-4 text-red-500" />
+              <span className="text-sm text-ccb-muted">CRAZYCHESSBERRY</span>
+            </div>
+            <span className="text-sm font-semibold text-red-500">{berries.toLocaleString()} 🍒</span>
           </div>
-        )}
 
-        {/* Referral bonus */}
-        <div className="mt-3 pt-3 border-t border-red-500/10">
-          <Link
-            href="/earn"
-            className="flex items-center justify-between text-sm text-ccb-primary font-medium hover:opacity-80"
-          >
-            <span className="flex items-center gap-1">
-              <Gift className="w-3.5 h-3.5" />
-              Earn more CCB 🍒
-            </span>
-            <span>→</span>
-          </Link>
+          {/* Berry redeem section */}
+          {berryConfig.enabled && (
+            <div className="mt-3 pt-3 border-t border-red-500/10">
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="number"
+                  value={redeemAmount}
+                  onChange={(e) => setRedeemAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                  min={berryConfig.min_redemption}
+                  max={berries}
+                  step={10}
+                  className="flex-1 px-3 py-2 rounded-lg bg-ccb-surface border border-ccb-border text-sm"
+                  placeholder="Berries to redeem"
+                />
+                <button
+                  onClick={handleRedeemBerries}
+                  disabled={redeemLoading || redeemAmount < berryConfig.min_redemption || redeemAmount > berries}
+                  className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  {redeemLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Redeem
+                </button>
+              </div>
+              <p className="text-xs text-ccb-muted">
+                = {formatMWK(redeemCashValue)} to wallet · 100🍒 = {formatMWK(berryConfig.berry_value_cents)}
+              </p>
+            </div>
+          )}
+
+          {berries < berryConfig.min_redemption && berryConfig.enabled && (
+            <div className="text-xs text-ccb-muted mt-2 pt-2 border-t border-red-500/10">
+              <p>Win {berryConfig.min_redemption - berries} more CCB to unlock cash redemption</p>
+            </div>
+          )}
+
+          {/* Referral bonus link */}
+          <div className="mt-3 pt-3 border-t border-red-500/10">
+            <Link
+              href="/earn"
+              className="flex items-center justify-between text-sm text-ccb-primary font-medium hover:opacity-80"
+            >
+              <span className="flex items-center gap-1">
+                <Gift className="w-3.5 h-3.5" />
+                Earn more CCB 🍒
+              </span>
+              <span>→</span>
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -441,25 +520,35 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
           <ArrowUp className="w-4 h-4" />
           Withdraw
         </button>
+        <button
+          onClick={() => setTab("history")}
+          className={`flex-1 py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 transition-colors ${
+            tab === "history" ? "bg-ccb-primary text-white" : "text-ccb-muted"
+          }`}
+        >
+          <History className="w-4 h-4" />
+          History
+        </button>
       </div>
 
-      {tab === "deposit" ? (
+      {/* DEPOSIT TAB */}
+      {tab === "deposit" && (
         <div className="space-y-4">
           <div>
             <label className="text-sm font-medium text-ccb-muted mb-2 block">Amount (MWK)</label>
             <input
               type="number"
-              value={amount}
-              onChange={(e) => setAmount(Math.max(100, parseInt(e.target.value) || 0))}
+              value={depositAmount}
+              onChange={(e) => setDepositAmount(Math.max(100, parseInt(e.target.value) || 0))}
               className="w-full px-4 py-3 rounded-xl bg-ccb-surface border border-ccb-border text-lg font-semibold"
             />
             <div className="flex gap-2 mt-2 flex-wrap">
               {QUICK_AMOUNTS.map((amt) => (
                 <button
                   key={amt}
-                  onClick={() => setAmount(amt)}
+                  onClick={() => setDepositAmount(amt)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    amount === amt ? "bg-ccb-primary text-white" : "bg-ccb-surface text-ccb-muted border border-ccb-border"
+                    depositAmount === amt ? "bg-ccb-primary text-white" : "bg-ccb-surface text-ccb-muted border border-ccb-border"
                   }`}
                 >
                   {amt.toLocaleString()}
@@ -534,33 +623,39 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
                 {polling ? "Waiting for payment..." : "Processing..."}
               </>
             ) : (
-              <>Deposit MWK {amount.toLocaleString()}</>
+              <>Deposit {formatMWK(depositAmount * 100)}</>
             )}
           </button>
         </div>
-      ) : (
+      )}
+
+      {/* WITHDRAW TAB */}
+      {tab === "withdraw" && (
         <div className="space-y-4">
           <div>
             <label className="text-sm font-medium text-ccb-muted mb-2 block">Amount (MWK)</label>
             <input
               type="number"
-              value={amount}
-              onChange={(e) => setAmount(Math.max(100, parseInt(e.target.value) || 0))}
+              value={withdrawAmount}
+              onChange={(e) => setWithdrawAmount(Math.max(100, parseInt(e.target.value) || 0))}
               className="w-full px-4 py-3 rounded-xl bg-ccb-surface border border-ccb-border text-lg font-semibold"
             />
             <div className="flex gap-2 mt-2 flex-wrap">
               {QUICK_AMOUNTS.map((amt) => (
                 <button
                   key={amt}
-                  onClick={() => setAmount(amt)}
+                  onClick={() => setWithdrawAmount(amt)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    amount === amt ? "bg-ccb-primary text-white" : "bg-ccb-surface text-ccb-muted border border-ccb-border"
+                    withdrawAmount === amt ? "bg-ccb-primary text-white" : "bg-ccb-surface text-ccb-muted border border-ccb-border"
                   }`}
                 >
                   {amt.toLocaleString()}
                 </button>
               ))}
             </div>
+            <p className="text-xs text-ccb-muted mt-2">
+              Available: {formatMWK(balance)} · Min: MWK 10
+            </p>
           </div>
 
           <div>
@@ -602,19 +697,19 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
                 Processing...
               </>
             ) : (
-              <>Withdraw MWK {amount.toLocaleString()}</>
+              <>Withdraw {formatMWK(withdrawAmount * 100)}</>
             )}
           </button>
 
           {withdrawals.length > 0 && (
             <div>
-              <p className="text-sm font-medium text-ccb-muted mb-2">Withdrawal History</p>
+              <p className="text-sm font-medium text-ccb-muted mb-2">Recent Withdrawals</p>
               <div className="space-y-2">
                 {withdrawals.slice(0, 5).map((w) => (
                   <div key={w.id} className="flex items-center justify-between p-3 rounded-lg bg-ccb-surface border border-ccb-border">
                     <div>
-                      <p className="text-sm font-medium">MWK {Math.floor(w.amount_cents / 100).toLocaleString()}</p>
-                      <p className="text-xs text-ccb-muted">{w.operator_name} • {new Date(w.created_at).toLocaleDateString()}</p>
+                      <p className="text-sm font-medium">{formatMWK(w.amount_cents)}</p>
+                      <p className="text-xs text-ccb-muted">{w.operator_name} · {formatDate(w.created_at)}</p>
                     </div>
                     <span className={`text-xs px-2 py-1 rounded-full ${
                       w.status === "completed" ? "bg-green-500/10 text-green-600" :
@@ -632,27 +727,77 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
         </div>
       )}
 
-      {/* Deposit history */}
-      {deposits.length > 0 && (
-        <div>
-          <p className="text-sm font-medium text-ccb-muted mb-2">Deposit History</p>
-          <div className="space-y-2">
-            {deposits.slice(0, 8).map((d) => (
-              <div key={d.id} className="flex items-center justify-between p-3 rounded-lg bg-ccb-surface border border-ccb-border">
-                <div>
-                  <p className="text-sm font-medium">MWK {Math.floor(d.amount_cents / 100).toLocaleString()}</p>
-                  <p className="text-xs text-ccb-muted">{d.method === "mobile_money" ? "Mobile Money" : "Card"} • {new Date(d.created_at).toLocaleDateString()}</p>
-                </div>
-                <span className={`text-xs px-2 py-1 rounded-full ${
-                  d.status === "success" ? "bg-green-500/10 text-green-600" :
-                  d.status === "pending" ? "bg-yellow-500/10 text-yellow-600" :
-                  "bg-red-500/10 text-red-500"
-                }`}>
-                  {d.status}
-                </span>
+      {/* HISTORY TAB */}
+      {tab === "history" && (
+        <div className="space-y-3">
+          {txnLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-ccb-muted" />
+            </div>
+          ) : transactions.length === 0 ? (
+            <div className="text-center py-12 text-ccb-muted text-sm">
+              <History className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              No transactions yet
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {transactions.map((txn) => {
+                const Icon = TXN_ICONS[txn.type] || Clock;
+                const color = TXN_COLORS[txn.type] || "text-ccb-muted";
+                const isPositive = txn.amount_cents > 0;
+                return (
+                  <div key={txn.id} className="flex items-center justify-between p-3 rounded-lg bg-ccb-surface border border-ccb-border">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-full bg-ccb-surface border border-ccb-border flex items-center justify-center ${color}`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{txn.description}</p>
+                        <p className="text-xs text-ccb-muted">{formatDate(txn.created_at)}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-sm font-semibold ${isPositive ? "text-ccb-success" : "text-ccb-danger"}`}>
+                        {isPositive ? "+" : ""}{formatMWK(txn.amount_cents)}
+                      </p>
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${
+                        txn.status === "success" || txn.status === "completed" || txn.status === "approved" ? "bg-green-500/10 text-green-600" :
+                        txn.status === "pending" ? "bg-yellow-500/10 text-yellow-600" :
+                        txn.status === "rejected" || txn.status === "failed" ? "bg-red-500/10 text-red-500" :
+                        "bg-ccb-surface text-ccb-muted"
+                      }`}>
+                        {txn.status}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Also show deposit history from SSR data as fallback */}
+          {transactions.length === 0 && deposits.length > 0 && (
+            <div>
+              <p className="text-sm font-medium text-ccb-muted mb-2">Deposit History</p>
+              <div className="space-y-2">
+                {deposits.slice(0, 8).map((d) => (
+                  <div key={d.id} className="flex items-center justify-between p-3 rounded-lg bg-ccb-surface border border-ccb-border">
+                    <div>
+                      <p className="text-sm font-medium">{formatMWK(d.amount_cents)}</p>
+                      <p className="text-xs text-ccb-muted">{d.method === "mobile_money" ? "Mobile Money" : "Card"} · {formatDate(d.created_at)}</p>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      d.status === "success" ? "bg-green-500/10 text-green-600" :
+                      d.status === "pending" ? "bg-yellow-500/10 text-yellow-600" :
+                      "bg-red-500/10 text-red-500"
+                    }`}>
+                      {d.status}
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>
