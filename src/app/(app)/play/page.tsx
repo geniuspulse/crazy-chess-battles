@@ -21,25 +21,49 @@ const aiDifficulties: { id: AIDifficulty; label: string; desc: string }[] = [
   { id: "hard", label: "Hard", desc: "Think carefully" },
 ];
 
+type SearchState = "idle" | "searching" | "noPlayers";
+
 export default function PlayPage() {
   const [selectedTC, setSelectedTC] = useState<string>("blitz");
   const [rated, setRated] = useState(true);
-  const [searching, setSearching] = useState(false);
+  const [searchState, setSearchState] = useState<SearchState>("idle");
   const [challengeUrl, setChallengeUrl] = useState<string | null>(null);
   const [creatingChallenge, setCreatingChallenge] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [matchError, setMatchError] = useState<string | null>(null);
   const [showComputer, setShowComputer] = useState(false);
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty>("medium");
   const [aiColor, setAiColor] = useState<"white" | "black">("white");
+  const [searchSeconds, setSearchSeconds] = useState(0);
   const matchChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const matchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const router = useRouter();
   const supabase = createClient();
 
+  // Cleanup helper
+  const cleanupSearch = () => {
+    if (matchChannelRef.current) {
+      supabase.removeChannel(matchChannelRef.current);
+      matchChannelRef.current = null;
+    }
+    if (matchTimeoutRef.current) {
+      clearTimeout(matchTimeoutRef.current);
+      matchTimeoutRef.current = null;
+    }
+    if (searchIntervalRef.current) {
+      clearInterval(searchIntervalRef.current);
+      searchIntervalRef.current = null;
+    }
+  };
+
   const handleQuickMatch = async () => {
-    setSearching(true);
-    setMatchError(null);
+    setSearchState("searching");
+    setSearchSeconds(0);
+
+    // Start a search timer for display
+    searchIntervalRef.current = setInterval(() => {
+      setSearchSeconds((s) => s + 1);
+    }, 1000);
 
     try {
       const response = await fetch("/api/matchmaking/join", {
@@ -51,11 +75,13 @@ export default function PlayPage() {
       const data = await response.json();
 
       if (data.status === "matched" && data.gameId) {
+        cleanupSearch();
         router.push(`/game/${data.gameId}`);
         return;
       }
 
       if (data.status === "searching") {
+        // Listen for a match via realtime
         const channel = supabase
           .channel("matchmaking")
           .on(
@@ -73,7 +99,7 @@ export default function PlayPage() {
                 .limit(1)
                 .single();
               if (newGame) {
-                supabase.removeChannel(channel);
+                cleanupSearch();
                 router.push(`/game/${newGame.id}`);
               }
             }
@@ -81,50 +107,53 @@ export default function PlayPage() {
           .subscribe();
         matchChannelRef.current = channel;
 
+        // After 8 seconds with no match, offer the bot fallback
         matchTimeoutRef.current = setTimeout(() => {
-          if (matchChannelRef.current) {
-            supabase.removeChannel(matchChannelRef.current);
-            matchChannelRef.current = null;
-          }
-          setSearching(false);
-          setMatchError("No opponent found. Try again!");
-        }, 60000);
+          cleanupSearch();
+          // Leave the matchmaking queue
+          fetch("/api/matchmaking/leave", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          }).catch(() => {});
+          setSearchState("noPlayers");
+        }, 8000);
         return;
       }
 
       if (data.error) {
-        setMatchError(data.error);
-        setSearching(false);
+        cleanupSearch();
+        setSearchState("idle");
+        // Show inline error
+        alert(data.error);
       }
     } catch {
-      setMatchError("Network error. Try again.");
-      setSearching(false);
+      cleanupSearch();
+      setSearchState("idle");
     }
   };
 
   const handleCancel = async () => {
-    if (matchChannelRef.current) {
-      supabase.removeChannel(matchChannelRef.current);
-      matchChannelRef.current = null;
-    }
-    if (matchTimeoutRef.current) {
-      clearTimeout(matchTimeoutRef.current);
-      matchTimeoutRef.current = null;
-    }
+    cleanupSearch();
     try {
       await fetch("/api/matchmaking/leave", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
     } catch {}
-    setSearching(false);
+    setSearchState("idle");
+  };
+
+  // Play against the bot as fallback
+  const handlePlayBot = () => {
+    const tc = timeControls.find((t) => t.id === selectedTC);
+    if (!tc) return;
+    // Random color for fairness
+    const color = Math.random() < 0.5 ? "white" : "black";
+    router.push(`/play/computer?difficulty=${aiDifficulty}&color=${color}&tc=${selectedTC}`);
   };
 
   useEffect(() => {
-    return () => {
-      if (matchChannelRef.current) supabase.removeChannel(matchChannelRef.current);
-      if (matchTimeoutRef.current) clearTimeout(matchTimeoutRef.current);
-    };
+    return () => cleanupSearch();
   }, []);
 
   const handleCreateChallenge = async () => {
@@ -153,7 +182,8 @@ export default function PlayPage() {
     router.push(`/play/computer?difficulty=${aiDifficulty}&color=${aiColor}&tc=${selectedTC}`);
   };
 
-  if (searching) {
+  // ===== Searching state =====
+  if (searchState === "searching") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 animate-slide-up">
         <div className="relative">
@@ -166,6 +196,7 @@ export default function PlayPage() {
           <p className="text-sm text-ccb-muted">
             {timeControls.find((t) => t.id === selectedTC)?.desc} · {rated ? "Ranked" : "Casual"}
           </p>
+          <p className="text-xs text-ccb-muted mt-1">{searchSeconds}s elapsed</p>
         </div>
         <button onClick={handleCancel} className="btn-secondary">
           <X className="w-4 h-4 mr-1" /> Cancel
@@ -174,18 +205,59 @@ export default function PlayPage() {
     );
   }
 
+  // ===== No players found — offer bot =====
+  if (searchState === "noPlayers") {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 animate-slide-up">
+        <div className="w-20 h-20 rounded-full bg-ccb-primary/10 flex items-center justify-center">
+          <Bot className="w-10 h-10 text-ccb-primary" />
+        </div>
+        <div className="text-center space-y-1">
+          <h2 className="text-xl font-bold">No players online</h2>
+          <p className="text-sm text-ccb-muted max-w-xs">
+            Nobody's in the queue right now. Play the computer instead — same time control.
+          </p>
+        </div>
+
+        {/* Difficulty picker for bot */}
+        <div className="flex gap-2">
+          {aiDifficulties.map((d) => (
+            <button
+              key={d.id}
+              onClick={() => setAiDifficulty(d.id)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                aiDifficulty === d.id
+                  ? "bg-ccb-primary text-white"
+                  : "bg-ccb-card border border-ccb-border text-ccb-muted hover:text-ccb-text"
+              }`}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button onClick={handlePlayBot} className="btn-primary">
+            <Bot className="w-4 h-4 mr-1.5" /> Play Computer
+          </button>
+          <button
+            onClick={() => { setSearchState("idle"); }}
+            className="btn-secondary"
+          >
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== Default play page =====
   return (
     <div className="space-y-6 pb-20 sm:pb-0">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold">Play Chess</h1>
         <p className="text-sm text-ccb-muted mt-1">Choose your time control and find an opponent</p>
       </div>
-
-      {matchError && (
-        <div className="rounded-lg bg-ccb-danger/10 border border-ccb-danger/30 text-ccb-danger px-4 py-3 text-sm">
-          {matchError}
-        </div>
-      )}
 
       {/* Time control selection */}
       <div>
@@ -231,6 +303,11 @@ export default function PlayPage() {
         </button>
       </div>
 
+      {/* Quick Match — primary CTA */}
+      <button onClick={handleQuickMatch} className="btn-primary w-full text-base py-3">
+        <Swords className="w-5 h-5 mr-2" /> Quick Match
+      </button>
+
       {/* Play vs Computer */}
       <div className="card card-hover space-y-4">
         <h3 className="font-medium flex items-center gap-2">
@@ -274,74 +351,41 @@ export default function PlayPage() {
               </button>
             </div>
 
-            <div className="flex gap-2">
-              <button onClick={handlePlayComputer} className="btn-primary flex-1 flex items-center justify-center gap-2">
-                <Bot className="w-4 h-4" /> Start Game
-              </button>
-              <button onClick={() => setShowComputer(false)} className="btn-secondary px-4">
-                Cancel
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-sm text-ccb-muted">
-              Practice against an AI bot. Choose your difficulty level and color.
-            </p>
-            <button onClick={() => setShowComputer(true)} className="btn-secondary w-full flex items-center justify-center gap-2">
-              <Bot className="w-4 h-4" /> Configure Game
+            <button onClick={handlePlayComputer} className="btn-primary w-full">
+              <Bot className="w-4 h-4 mr-1.5" /> Start Game
             </button>
           </>
-        )}
-      </div>
-
-      {/* Challenge a Friend */}
-      <div className="card card-hover space-y-3">
-        <h3 className="font-medium flex items-center gap-2">
-          <Link2 className="w-4 h-4 text-ccb-primary" />
-          Challenge a Friend
-        </h3>
-        <p className="text-sm text-ccb-muted">
-          Generate a link and share it. The game starts as soon as they accept.
-        </p>
-        {challengeUrl ? (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <input
-                readOnly
-                value={challengeUrl}
-                className="input-field flex-1 text-xs"
-                onClick={(e) => (e.target as HTMLInputElement).select()}
-              />
-              <button onClick={handleCopyLink} className="btn-secondary px-3">
-                {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-              </button>
-              {copied && <span className="text-xs text-green-400">Copied!</span>}
-            </div>
-            <a href={challengeUrl} target="_blank" className="text-xs text-ccb-primary hover:underline">
-              Open challenge page →
-            </a>
-          </div>
         ) : (
-          <button
-            onClick={handleCreateChallenge}
-            disabled={creatingChallenge}
-            className="btn-primary w-full flex items-center justify-center gap-2"
-          >
-            {creatingChallenge ? (
-              <><span className="animate-pulse">Generating...</span></>
-            ) : (
-              <><Link2 className="w-4 h-4" /> Generate Challenge Link</>
-            )}
+          <button onClick={() => setShowComputer(true)} className="btn-secondary w-full">
+            <Bot className="w-4 h-4 mr-1.5" /> Configure Bot Game
           </button>
         )}
       </div>
 
-      {/* Play button */}
-      <button onClick={handleQuickMatch} className="btn-play">
-        <Swords className="w-5 h-5 mr-2" />
-        Quick Match
-      </button>
+      {/* Challenge a friend */}
+      <div className="card card-hover space-y-4">
+        <h3 className="font-medium flex items-center gap-2">
+          <Link2 className="w-4 h-4 text-ccb-primary" />
+          Challenge a Friend
+        </h3>
+        <p className="text-sm text-ccb-muted">Create a game link and share it with anyone.</p>
+        {challengeUrl ? (
+          <div className="flex items-center gap-2">
+            <input
+              readOnly
+              value={challengeUrl}
+              className="input-field flex-1 text-xs"
+            />
+            <button onClick={handleCopyLink} className="btn-secondary shrink-0">
+              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </div>
+        ) : (
+          <button onClick={handleCreateChallenge} disabled={creatingChallenge} className="btn-secondary w-full">
+            <Link2 className="w-4 h-4 mr-1.5" /> {creatingChallenge ? "Creating..." : "Create Game Link"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
