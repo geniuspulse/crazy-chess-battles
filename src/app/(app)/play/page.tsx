@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { AIDifficulty } from "@/lib/game/chess-ai";
 import {
   Zap, Clock, Swords, Bot, Link2, Copy, Check, X,
-  Users, Target, Sparkles, ChevronRight, Crown, Play,
+  Users, Target, Sparkles, ChevronRight, Play,
 } from "lucide-react";
 
 const timeControls = [
@@ -24,11 +24,11 @@ const aiDifficulties: { id: AIDifficulty; label: string; desc: string }[] = [
   { id: "hard",   label: "Hard",   desc: "Think carefully" },
 ];
 
-type Mode = "menu" | "quickmatch" | "challenge" | "computer";
+type View = "main" | "challenge" | "computer";
 type SearchState = "idle" | "searching" | "noPlayers";
 
 export default function PlayPage() {
-  const [mode, setMode] = useState<Mode>("menu");
+  const [view, setView] = useState<View>("main");
   const [selectedTC, setSelectedTC] = useState("blitz");
   const [rated, setRated] = useState(true);
   const [searchState, setSearchState] = useState<SearchState>("idle");
@@ -109,16 +109,13 @@ export default function PlayPage() {
           .subscribe();
         matchChannelRef.current = channel;
 
-        // After 20 seconds with no match — notify admin, then show fallback
         matchTimeoutRef.current = setTimeout(async () => {
           cleanupSearch();
-          // Leave the matchmaking queue
           fetch("/api/matchmaking/leave", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
           }).catch(() => {});
 
-          // Notify admin that a player is waiting
           try {
             await fetch("/api/notify-admin", {
               method: "POST",
@@ -198,7 +195,6 @@ export default function PlayPage() {
           <div className="w-28 h-28 rounded-full bg-ccb-primary/10 flex items-center justify-center animate-pulse-glow">
             <Swords className="w-14 h-14 text-ccb-primary" />
           </div>
-          {/* Orbital dots */}
           <div className="absolute inset-0 rounded-full border-2 border-ccb-primary/20 border-t-ccb-primary animate-spin" style={{ animationDuration: "1.5s" }} />
         </div>
         <div className="text-center">
@@ -229,7 +225,6 @@ export default function PlayPage() {
           </p>
         </div>
 
-        {/* Admin notification badge */}
         {adminNotified && (
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-ccb-primary/10 border border-ccb-primary/30 text-xs text-ccb-primary">
             <Sparkles className="w-3.5 h-3.5" />
@@ -237,7 +232,6 @@ export default function PlayPage() {
           </div>
         )}
 
-        {/* Difficulty picker */}
         <div className="flex gap-2">
           {aiDifficulties.map((d) => (
             <button
@@ -258,55 +252,19 @@ export default function PlayPage() {
           <button onClick={handlePlayBot} className="btn-primary px-8">
             <Bot className="w-4 h-4 mr-1.5" /> Play Computer
           </button>
-          <button onClick={() => { setSearchState("idle"); setMode("menu"); }} className="btn-secondary px-6">
-            Back to Menu
+          <button onClick={() => setSearchState("idle")} className="btn-secondary px-6">
+            Back
           </button>
         </div>
       </div>
     );
   }
 
-  // ===== Mode: Quick Match (time selection + search) =====
-  if (mode === "quickmatch") {
+  // ===== Create Challenge view =====
+  if (view === "challenge") {
     return (
       <div className="max-w-2xl mx-auto space-y-6 pb-20 sm:pb-0 animate-slide-up">
-        <button onClick={() => setMode("menu")} className="text-sm text-ccb-muted hover:text-ccb-text flex items-center gap-1">
-          <ChevronRight className="w-4 h-4 rotate-180" /> Back
-        </button>
-
-        <div>
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-10 h-10 rounded-xl bg-ccb-primary/15 flex items-center justify-center">
-              <Swords className="w-5 h-5 text-ccb-primary" />
-            </div>
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold">Quick Match</h1>
-              <p className="text-sm text-ccb-muted">Auto-matched with a player of similar rating</p>
-            </div>
-          </div>
-        </div>
-
-        <TimeControlPicker selectedTC={selectedTC} setSelectedTC={setSelectedTC} />
-
-        <RatedToggle rated={rated} setRated={setRated} />
-
-        <button onClick={handleQuickMatch} className="btn-primary w-full text-base py-3.5 text-lg">
-          <Swords className="w-5 h-5 mr-2" /> Find Match
-        </button>
-
-        <p className="text-xs text-ccb-muted text-center">
-          If no opponent is found within 20 seconds, you'll get the option to play the computer.
-          The admin will also be notified that you're looking for a game.
-        </p>
-      </div>
-    );
-  }
-
-  // ===== Mode: Create Challenge =====
-  if (mode === "challenge") {
-    return (
-      <div className="max-w-2xl mx-auto space-y-6 pb-20 sm:pb-0 animate-slide-up">
-        <button onClick={() => setMode("menu")} className="text-sm text-ccb-muted hover:text-ccb-text flex items-center gap-1">
+        <button onClick={() => setView("main")} className="text-sm text-ccb-muted hover:text-ccb-text flex items-center gap-1">
           <ChevronRight className="w-4 h-4 rotate-180" /> Back
         </button>
 
@@ -347,7 +305,7 @@ export default function PlayPage() {
             <p className="text-xs text-ccb-muted">
               The game starts automatically when someone accepts.
             </p>
-            <button onClick={() => { setChallengeUrl(null); setMode("menu"); }} className="btn-secondary w-full">
+            <button onClick={() => { setChallengeUrl(null); setView("main"); }} className="btn-secondary w-full">
               Create Another
             </button>
           </div>
@@ -366,11 +324,11 @@ export default function PlayPage() {
     );
   }
 
-  // ===== Mode: Play vs Computer =====
-  if (mode === "computer") {
+  // ===== Play vs Computer view =====
+  if (view === "computer") {
     return (
       <div className="max-w-2xl mx-auto space-y-6 pb-20 sm:pb-0 animate-slide-up">
-        <button onClick={() => setMode("menu")} className="text-sm text-ccb-muted hover:text-ccb-text flex items-center gap-1">
+        <button onClick={() => setView("main")} className="text-sm text-ccb-muted hover:text-ccb-text flex items-center gap-1">
           <ChevronRight className="w-4 h-4 rotate-180" /> Back
         </button>
 
@@ -388,7 +346,6 @@ export default function PlayPage() {
 
         <TimeControlPicker selectedTC={selectedTC} setSelectedTC={setSelectedTC} />
 
-        {/* Difficulty */}
         <div>
           <h3 className="text-sm font-medium text-ccb-muted mb-3">Difficulty</h3>
           <div className="grid grid-cols-3 gap-3">
@@ -405,7 +362,6 @@ export default function PlayPage() {
           </div>
         </div>
 
-        {/* Color */}
         <div>
           <h3 className="text-sm font-medium text-ccb-muted mb-3">Your Color</h3>
           <div className="grid grid-cols-2 gap-3">
@@ -433,85 +389,59 @@ export default function PlayPage() {
     );
   }
 
-  // ===== Main mode menu =====
+  // ===== MAIN VIEW — flat, no menu step =====
   return (
-    <div className="max-w-3xl mx-auto space-y-6 pb-20 sm:pb-0">
+    <div className="max-w-2xl mx-auto space-y-5 pb-20 sm:pb-0">
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold">Play Chess</h1>
-        <p className="text-sm text-ccb-muted mt-1">Choose your game mode and start playing</p>
+        <p className="text-sm text-ccb-muted mt-1">Pick your time control and find a game</p>
       </div>
 
-      {/* Mode cards */}
-      <div className="grid gap-4">
-        {/* Quick Match */}
-        <button
-          onClick={() => { setMode("quickmatch"); setSearchState("idle"); }}
-          className="group relative overflow-hidden rounded-2xl border border-ccb-border bg-ccb-card p-6 text-left transition-all hover:border-ccb-primary/50 hover:shadow-xl hover:shadow-ccb-primary/5"
-        >
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-ccb-primary to-ccb-primaryHover flex items-center justify-center shrink-0">
-              <Swords className="w-7 h-7 text-white" />
-            </div>
-            <div className="flex-1">
-              <h2 className="text-lg font-bold flex items-center gap-2">
-                Quick Match
-                <span className="badge bg-ccb-primary/15 text-ccb-primary text-[10px] px-2 py-0.5">AUTO</span>
-              </h2>
-              <p className="text-sm text-ccb-muted mt-0.5">
-                Get matched instantly with a player of similar rating. Pick your time control and jump in.
-              </p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-ccb-muted group-hover:text-ccb-primary transition-colors shrink-0" />
-          </div>
-        </button>
+      {/* Time Control — immediately visible */}
+      <TimeControlPicker selectedTC={selectedTC} setSelectedTC={setSelectedTC} />
 
-        {/* Create Challenge */}
-        <button
-          onClick={() => setMode("challenge")}
-          className="group relative overflow-hidden rounded-2xl border border-ccb-border bg-ccb-card p-6 text-left transition-all hover:border-ccb-accent/50 hover:shadow-xl hover:shadow-ccb-accent/5"
-        >
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-ccb-accent to-amber-600 flex items-center justify-center shrink-0">
-              <Link2 className="w-7 h-7 text-white" />
-            </div>
-            <div className="flex-1">
-              <h2 className="text-lg font-bold flex items-center gap-2">
-                Create a Challenge
-                <span className="badge bg-ccb-accent/15 text-ccb-accent text-[10px] px-2 py-0.5">SHARE</span>
-              </h2>
-              <p className="text-sm text-ccb-muted mt-0.5">
-                Set up a game with your preferred rules and share a link with a friend. Appears in the Challenges tab.
-              </p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-ccb-muted group-hover:text-ccb-accent transition-colors shrink-0" />
-          </div>
-        </button>
+      {/* Ranked toggle — inline */}
+      <RatedToggle rated={rated} setRated={setRated} />
 
-        {/* Play vs Computer */}
+      {/* Big play button */}
+      <button onClick={handleQuickMatch} className="btn-primary w-full text-base py-4 text-lg">
+        <Swords className="w-5 h-5 mr-2" /> Find Match
+      </button>
+
+      <p className="text-xs text-ccb-muted text-center">
+        No opponent found in 20s? You'll get the option to play the computer.
+      </p>
+
+      {/* Divider */}
+      <div className="relative pt-2">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-ccb-border" />
+        </div>
+        <div className="relative flex justify-center">
+          <span className="bg-ccb-dark px-3 text-xs text-ccb-muted">or</span>
+        </div>
+      </div>
+
+      {/* Secondary actions — no extra menu step */}
+      <div className="grid grid-cols-2 gap-3">
         <button
-          onClick={() => setMode("computer")}
-          className="group relative overflow-hidden rounded-2xl border border-ccb-border bg-ccb-card p-6 text-left transition-all hover:border-ccb-success/50 hover:shadow-xl hover:shadow-ccb-success/5"
+          onClick={() => setView("challenge")}
+          className="flex items-center justify-center gap-2 rounded-xl border border-ccb-border bg-ccb-card px-4 py-3 text-sm font-medium text-ccb-text hover:border-ccb-accent/50 hover:bg-ccb-surface transition-colors"
         >
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-ccb-success to-emerald-700 flex items-center justify-center shrink-0">
-              <Bot className="w-7 h-7 text-white" />
-            </div>
-            <div className="flex-1">
-              <h2 className="text-lg font-bold flex items-center gap-2">
-                Play vs Computer
-                <span className="badge bg-ccb-success/15 text-ccb-success text-[10px] px-2 py-0.5">PRACTICE</span>
-              </h2>
-              <p className="text-sm text-ccb-muted mt-0.5">
-                Train against the AI with adjustable difficulty. Great for warming up or trying new openings.
-              </p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-ccb-muted group-hover:text-ccb-success transition-colors shrink-0" />
-          </div>
+          <Link2 className="w-4 h-4 text-ccb-accent" />
+          Challenge a Friend
+        </button>
+        <button
+          onClick={() => setView("computer")}
+          className="flex items-center justify-center gap-2 rounded-xl border border-ccb-border bg-ccb-card px-4 py-3 text-sm font-medium text-ccb-text hover:border-ccb-success/50 hover:bg-ccb-surface transition-colors"
+        >
+          <Bot className="w-4 h-4 text-ccb-success" />
+          Play Computer
         </button>
       </div>
 
       {/* Quick links */}
-      <div className="flex flex-col sm:flex-row gap-3 pt-2">
+      <div className="flex flex-col sm:flex-row gap-3 pt-1">
         <button
           onClick={() => router.push("/challenges")}
           className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-ccb-border bg-ccb-surface px-4 py-3 text-sm font-medium text-ccb-text hover:border-ccb-primary/40 transition-colors"

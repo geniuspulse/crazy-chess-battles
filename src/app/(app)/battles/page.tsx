@@ -32,14 +32,14 @@ interface BattleConfig {
   increment_seconds: number;
 }
 
-type Mode = "menu" | "quickbattle" | "challenge";
+type View = "main" | "challenge";
 type BattleState = "select" | "searching" | "matched" | "playing";
 
 export default function BattlesPage() {
   const router = useRouter();
   const supabase = createClient();
 
-  const [mode, setMode] = useState<Mode>("menu");
+  const [view, setView] = useState<View>("main");
   const [config, setConfig] = useState<BattleConfig | null>(null);
   const [balance, setBalance] = useState(0);
   const [selectedStake, setSelectedStake] = useState<number | null>(null);
@@ -79,28 +79,10 @@ export default function BattlesPage() {
           router.push(`/game/${data.gameId}`);
           return;
         }
-      } else {
-        setActiveBattle(null);
       }
     } catch {}
     setCheckingActive(false);
   }, [router]);
-
-  useEffect(() => {
-    loadConfig();
-    loadProfile();
-    checkActiveBattle();
-  }, [checkActiveBattle]);
-
-  const loadConfig = async () => {
-    try {
-      const res = await fetch("/api/battles/config");
-      if (res.ok) {
-        const data = await res.json();
-        setConfig(data);
-      }
-    } catch {}
-  };
 
   const loadProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -115,6 +97,12 @@ export default function BattlesPage() {
       setBalance(profile.wallet_balance_cents ?? 0);
     }
   };
+
+  useEffect(() => {
+    checkActiveBattle();
+    loadProfile();
+    fetch("/api/battles/config").then(r => r.json()).then(d => setConfig(d)).catch(() => {});
+  }, [checkActiveBattle]);
 
   const handleCancelStuck = async () => {
     if (!activeBattle) return;
@@ -165,7 +153,6 @@ export default function BattlesPage() {
       }
     }, 2000);
 
-    // After 20 seconds, notify admin that a player is waiting
     adminNotifyRef.current = setTimeout(async () => {
       try {
         await fetch("/api/notify-admin", {
@@ -246,7 +233,6 @@ export default function BattlesPage() {
 
       if (!res.ok) { setError(data.error || "Failed to create challenge"); setCreatingChallenge(false); return; }
 
-      // Stake is now locked — go to the waiting screen
       router.push(`/battle-challenge/${data.challengeId}`);
     } catch { setError("Failed to create challenge"); }
     setCreatingChallenge(false);
@@ -433,123 +419,11 @@ export default function BattlesPage() {
     );
   }
 
-  // ===== Mode: Quick Battle (stake + time + search) =====
-  if (mode === "quickbattle") {
+  // ===== Challenge a Friend view =====
+  if (view === "challenge") {
     return (
       <div className="max-w-2xl mx-auto space-y-6 pb-20 sm:pb-0 animate-slide-up">
-        <button onClick={() => setMode("menu")} className="text-sm text-ccb-muted hover:text-ccb-text flex items-center gap-1">
-          <ChevronRight className="w-4 h-4 rotate-180" /> Back
-        </button>
-
-        <div>
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-10 h-10 rounded-xl bg-ccb-primary/15 flex items-center justify-center">
-              <Coins className="w-5 h-5 text-ccb-primary" />
-            </div>
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold">Quick Battle</h1>
-              <p className="text-sm text-ccb-muted">Auto-matched by stake and rating</p>
-            </div>
-          </div>
-        </div>
-
-        {error && (
-          <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" /> {error}
-          </div>
-        )}
-
-        {/* Time Control */}
-        <div>
-          <h3 className="text-sm font-medium text-ccb-muted mb-3">Time Control</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {TIME_CONTROLS.map((tc) => {
-              const Icon = tc.icon;
-              const isSelected = selectedTC === tc.id;
-              return (
-                <button key={tc.id} onClick={() => setSelectedTC(tc.id)}
-                  className={`tc-btn flex items-center gap-3 text-left ${isSelected ? "tc-active" : ""}`}>
-                  <Icon className={`w-5 h-5 ${isSelected ? "text-ccb-primary" : "text-ccb-muted"}`} />
-                  <div>
-                    <div className="text-sm font-medium">{tc.desc}</div>
-                    <div className="text-xs text-ccb-muted">{tc.label}</div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Stake selection */}
-        <div>
-          <h3 className="text-sm font-medium text-ccb-muted mb-3">Choose Your Stake</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {stakes.map((stake) => {
-              const isSelected = selectedStake === stake;
-              const canAfford = balance >= stake;
-              const payout = stake * 2 - Math.round(stake * 2 * (feePct / 100));
-              return (
-                <button key={stake} onClick={() => canAfford && setSelectedStake(stake)} disabled={!canAfford}
-                  className={`p-4 rounded-xl border-2 transition-all text-center ${
-                    isSelected ? "border-ccb-primary bg-ccb-primary/10"
-                      : canAfford ? "border-ccb-border bg-ccb-surface hover:border-ccb-primary/50"
-                      : "border-ccb-border bg-ccb-surface/50 opacity-50 cursor-not-allowed"
-                  }`}>
-                  <Coins className={`w-5 h-5 mx-auto mb-2 ${isSelected ? "text-ccb-primary" : "text-ccb-muted"}`} />
-                  <p className={`font-bold text-lg ${isSelected ? "text-ccb-primary" : ""}`}>{formatMKK(stake)}</p>
-                  <p className="text-xs text-ccb-muted mt-1">Win {formatMKK(payout)}</p>
-                  {!canAfford && <p className="text-xs text-red-400 mt-1">Insufficient</p>}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Summary */}
-        {selectedStake !== null && (
-          <div className="p-4 rounded-xl bg-ccb-card border border-ccb-border">
-            <div className="flex items-center justify-between text-sm mb-2">
-              <span className="text-ccb-muted">Your stake</span>
-              <span className="font-semibold">{formatMKK(selectedStake)}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm mb-2">
-              <span className="text-ccb-muted">Time control</span>
-              <span className="font-semibold">{TIME_CONTROLS.find((t) => t.id === selectedTC)?.desc}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm mb-2">
-              <span className="text-ccb-muted">Total pot</span>
-              <span className="font-semibold">{formatMKK(selectedStake * 2)}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm mb-2">
-              <span className="text-ccb-muted">Platform fee ({feePct}%)</span>
-              <span className="font-semibold text-red-400">−{formatMKK(Math.round(selectedStake * 2 * (feePct / 100)))}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm pt-2 border-t border-ccb-border">
-              <span className="text-ccb-muted">Winner receives</span>
-              <span className="font-bold text-ccb-primary text-lg">
-                {formatMKK(selectedStake * 2 - Math.round(selectedStake * 2 * (feePct / 100)))}
-              </span>
-            </div>
-          </div>
-        )}
-
-        <button onClick={handleEnterBattle} disabled={selectedStake === null}
-          className="btn-primary w-full text-base py-3.5">
-          <Swords className="w-5 h-5 mr-2" /> Enter Battle
-        </button>
-
-        <p className="text-xs text-ccb-muted text-center">
-          If no opponent is found, the admin will be notified after 20s. You can cancel anytime for a full refund.
-        </p>
-      </div>
-    );
-  }
-
-  // ===== Mode: Challenge a Friend =====
-  if (mode === "challenge") {
-    return (
-      <div className="max-w-2xl mx-auto space-y-6 pb-20 sm:pb-0 animate-slide-up">
-        <button onClick={() => setMode("menu")} className="text-sm text-ccb-muted hover:text-ccb-text flex items-center gap-1">
+        <button onClick={() => setView("main")} className="text-sm text-ccb-muted hover:text-ccb-text flex items-center gap-1">
           <ChevronRight className="w-4 h-4 rotate-180" /> Back
         </button>
 
@@ -642,86 +516,148 @@ export default function BattlesPage() {
           {creatingChallenge ? <Loader2 className="w-5 h-5 animate-spin" /> : <Link2 className="w-5 h-5 mr-2" />}
           {creatingChallenge ? "Creating..." : "Create Challenge Link"}
         </button>
-
-
       </div>
     );
   }
 
-  // ===== Main mode menu =====
+  // ===== MAIN VIEW — flat, no menu step =====
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 pb-28 sm:py-10 sm:pb-10">
-      {/* Header */}
-      <div className="text-center mb-8">
-        <div className="inline-flex items-center gap-2 mb-2">
-          <Swords className="w-7 h-7 text-ccb-primary" />
+    <div className="max-w-2xl mx-auto px-4 py-4 pb-28 sm:py-6 sm:pb-10 space-y-5">
+      {/* Header with balance + rating */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <Swords className="w-6 h-6 text-ccb-primary" />
           <h1 className="text-2xl font-bold">Chess Battles</h1>
         </div>
-        <p className="text-sm text-ccb-muted">Stake your coins. Beat your opponent. Win the pot.</p>
-        <div className="mt-3 flex items-center justify-center gap-4 text-sm">
+        <div className="flex items-center gap-4 text-sm">
           <span className="text-ccb-muted">Balance: <span className="font-semibold text-ccb-text">{formatMKK(balance)}</span></span>
           <span className="text-ccb-muted">Rating: <span className="font-semibold text-ccb-text">{myRating}</span></span>
         </div>
       </div>
 
-      {/* Mode cards */}
-      <div className="grid gap-4">
-        {/* Quick Battle */}
-        <button onClick={() => { setMode("quickbattle"); setState("select"); setError(null); }}
-          className="group relative overflow-hidden rounded-2xl border border-ccb-border bg-ccb-card p-6 text-left transition-all hover:border-ccb-primary/50 hover:shadow-xl hover:shadow-ccb-primary/5">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-ccb-primary to-ccb-primaryHover flex items-center justify-center shrink-0">
-              <Coins className="w-7 h-7 text-white" />
-            </div>
-            <div className="flex-1">
-              <h2 className="text-lg font-bold flex items-center gap-2">
-                Quick Battle
-                <span className="badge bg-ccb-primary/15 text-ccb-primary text-[10px] px-2 py-0.5">AUTO</span>
-              </h2>
-              <p className="text-sm text-ccb-muted mt-0.5">
-                Pick your stake and time control. Get matched instantly with a player of similar rating.
-              </p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-ccb-muted group-hover:text-ccb-primary transition-colors shrink-0" />
-          </div>
-        </button>
+      {error && (
+        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" /> {error}
+          <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300">
+            <XCircle className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
-        {/* Challenge a Friend */}
-        <button onClick={() => { setMode("challenge"); setError(null); }}
-          className="group relative overflow-hidden rounded-2xl border border-ccb-border bg-ccb-card p-6 text-left transition-all hover:border-ccb-accent/50 hover:shadow-xl hover:shadow-ccb-accent/5">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-ccb-accent to-amber-600 flex items-center justify-center shrink-0">
-              <Link2 className="w-7 h-7 text-white" />
-            </div>
-            <div className="flex-1">
-              <h2 className="text-lg font-bold flex items-center gap-2">
-                Challenge a Friend
-                <span className="badge bg-ccb-accent/15 text-ccb-accent text-[10px] px-2 py-0.5">SHARE</span>
-              </h2>
-              <p className="text-sm text-ccb-muted mt-0.5">
-                Set up a staked game with your rules and share a link. Your stake is locked in escrow.
-              </p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-ccb-muted group-hover:text-ccb-accent transition-colors shrink-0" />
-          </div>
-        </button>
-
+      {/* Time Control — immediately visible */}
+      <div>
+        <h3 className="text-sm font-medium text-ccb-muted mb-3">Time Control</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {TIME_CONTROLS.map((tc) => {
+            const Icon = tc.icon;
+            const isSelected = selectedTC === tc.id;
+            return (
+              <button key={tc.id} onClick={() => setSelectedTC(tc.id)}
+                className={`tc-btn flex items-center gap-3 text-left ${isSelected ? "tc-active" : ""}`}>
+                <Icon className={`w-5 h-5 ${isSelected ? "text-ccb-primary" : "text-ccb-muted"}`} />
+                <div>
+                  <div className="text-sm font-medium">{tc.desc}</div>
+                  <div className="text-xs text-ccb-muted">{tc.label}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* How it works */}
-      <div className="mt-8 p-4 rounded-xl bg-ccb-surface border border-ccb-border">
-        <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+      {/* Stake selection — immediately visible */}
+      <div>
+        <h3 className="text-sm font-medium text-ccb-muted mb-3">Choose Your Stake</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {stakes.map((stake) => {
+            const isSelected = selectedStake === stake;
+            const canAfford = balance >= stake;
+            const payout = stake * 2 - Math.round(stake * 2 * (feePct / 100));
+            return (
+              <button key={stake} onClick={() => canAfford && setSelectedStake(stake)} disabled={!canAfford}
+                className={`p-4 rounded-xl border-2 transition-all text-center ${
+                  isSelected ? "border-ccb-primary bg-ccb-primary/10"
+                    : canAfford ? "border-ccb-border bg-ccb-surface hover:border-ccb-primary/50"
+                    : "border-ccb-border bg-ccb-surface/50 opacity-50 cursor-not-allowed"
+                }`}>
+                <Coins className={`w-5 h-5 mx-auto mb-2 ${isSelected ? "text-ccb-primary" : "text-ccb-muted"}`} />
+                <p className={`font-bold text-lg ${isSelected ? "text-ccb-primary" : ""}`}>{formatMKK(stake)}</p>
+                <p className="text-xs text-ccb-muted mt-1">Win {formatMKK(payout)}</p>
+                {!canAfford && <p className="text-xs text-red-400 mt-1">Insufficient</p>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Summary */}
+      {selectedStake !== null && (
+        <div className="p-4 rounded-xl bg-ccb-card border border-ccb-border">
+          <div className="flex items-center justify-between text-sm mb-2">
+            <span className="text-ccb-muted">Your stake</span>
+            <span className="font-semibold">{formatMKK(selectedStake)}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm mb-2">
+            <span className="text-ccb-muted">Time control</span>
+            <span className="font-semibold">{TIME_CONTROLS.find((t) => t.id === selectedTC)?.desc}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm mb-2">
+            <span className="text-ccb-muted">Total pot</span>
+            <span className="font-semibold">{formatMKK(selectedStake * 2)}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm mb-2">
+            <span className="text-ccb-muted">Platform fee ({feePct}%)</span>
+            <span className="font-semibold text-red-400">−{formatMKK(Math.round(selectedStake * 2 * (feePct / 100)))}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm pt-2 border-t border-ccb-border">
+            <span className="text-ccb-muted">Winner receives</span>
+            <span className="font-bold text-ccb-primary text-lg">
+              {formatMKK(selectedStake * 2 - Math.round(selectedStake * 2 * (feePct / 100)))}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Big battle button */}
+      <button onClick={handleEnterBattle} disabled={selectedStake === null}
+        className="btn-primary w-full text-base py-4 text-lg">
+        <Swords className="w-5 h-5 mr-2" /> Enter Battle
+      </button>
+
+      <p className="text-xs text-ccb-muted text-center">
+        No opponent found in 20s? Admin gets notified. Cancel anytime for a full refund.
+      </p>
+
+      {/* Divider */}
+      <div className="relative pt-1">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-ccb-border" />
+        </div>
+        <div className="relative flex justify-center">
+          <span className="bg-ccb-dark px-3 text-xs text-ccb-muted">or</span>
+        </div>
+      </div>
+
+      {/* Secondary action */}
+      <button
+        onClick={() => setView("challenge")}
+        className="w-full flex items-center justify-center gap-2 rounded-xl border border-ccb-border bg-ccb-card px-4 py-3 text-sm font-medium text-ccb-text hover:border-ccb-accent/50 hover:bg-ccb-surface transition-colors"
+      >
+        <Link2 className="w-4 h-4 text-ccb-accent" />
+        Challenge a Friend
+      </button>
+
+      {/* How it works — compact */}
+      <div className="p-4 rounded-xl bg-ccb-surface border border-ccb-border">
+        <h3 className="text-sm font-medium mb-2 flex items-center gap-2">
           <Target className="w-4 h-4 text-ccb-primary" /> How it works
         </h3>
-        <div className="space-y-2 text-sm text-ccb-muted">
-          <p>1. Pick your stake — both players lock funds in escrow</p>
-          <p>2. Choose your time control (Bullet to Classical)</p>
-          <p>3. Win the game, take the pot (minus {feePct}% platform fee)</p>
-          <p>4. Draw triggers Armageddon tiebreak — winner of that takes the pot</p>
+        <div className="space-y-1.5 text-xs text-ccb-muted">
+          <p>1. Pick stake + time — both players lock funds in escrow</p>
+          <p>2. Win the game, take the pot (minus {feePct}% platform fee)</p>
+          <p>3. Draw triggers Armageddon tiebreak — winner takes the pot</p>
         </div>
       </div>
     </div>
   );
 }
-
-// ===== Browse Battle Challenges component =====
