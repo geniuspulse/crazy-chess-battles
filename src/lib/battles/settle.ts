@@ -90,11 +90,12 @@ export async function settleBattle(
     const { data: agGameId, error: agErr } = await admin.rpc("create_game", {
       p_white_id: battle.black_player_id, // swap colors
       p_black_id: battle.white_player_id,
+      p_white_rating: battle.black_rating ?? 1200,
+      p_black_rating: battle.white_rating ?? 1200,
+      p_time_control: "armageddon",
       p_initial_minutes: armMinutes,
       p_increment_seconds: 0,
       p_rated: true,
-      p_tournament_id: null,
-      p_time_control: "armageddon",
     });
 
     if (agErr || !agGameId) {

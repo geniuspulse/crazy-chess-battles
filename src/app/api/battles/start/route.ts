@@ -49,11 +49,12 @@ export async function POST(req: NextRequest) {
     const { data: gameId, error: gameErr } = await admin.rpc("create_game", {
       p_white_id: battle.white_player_id,
       p_black_id: battle.black_player_id,
+      p_white_rating: battle.white_rating ?? 1200,
+      p_black_rating: battle.black_rating ?? 1200,
+      p_time_control: "battle",
       p_initial_minutes: minutes,
       p_increment_seconds: increment,
       p_rated: true,
-      p_tournament_id: null,
-      p_time_control: "battle",
     });
 
     if (gameErr || !gameId) {
