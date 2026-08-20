@@ -64,13 +64,13 @@ interface Deposit {
 interface Tournament {
   id: string;
   name: string;
-  format: string;
+  type: string;
   status: string;
   entry_fee_cents: number;
   prize_pool_cents: number;
   max_players: number;
   current_round: number;
-  total_rounds: number;
+  rounds: number;
   starts_at: string;
   created_at: string;
   participant_count: number;
@@ -635,7 +635,7 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
                             }`}>{t.status}</span>
                           </div>
                           <div className="text-xs text-ccb-muted mt-1">
-                            {t.format} · {t.participant_count}/{t.max_players} players · Round {t.current_round}/{t.total_rounds}
+                            {t.type} · {t.participant_count}/{t.max_players ?? '∞'} players · Round {t.current_round}/{t.rounds}
                           </div>
                           <div className="text-xs text-ccb-muted">
                             Entry: {formatMWK(t.entry_fee_cents)} · Prize: {formatMWK(t.prize_pool_cents)}

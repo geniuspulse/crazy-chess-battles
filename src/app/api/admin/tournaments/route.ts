@@ -17,8 +17,8 @@ export async function GET(req: NextRequest) {
     const { data: tournaments, error } = await admin
       .from("tournaments")
       .select(`
-        id, name, format, status, entry_fee_cents, prize_pool_cents,
-        max_players, current_round, total_rounds, starts_at, created_at
+        id, name, type, status, entry_fee_cents, prize_pool_cents,
+        max_players, current_round, rounds, starts_at, created_at
       `)
       .order("created_at", { ascending: false })
       .limit(50);
@@ -65,30 +65,42 @@ export async function PATCH(req: NextRequest) {
     if (!tournamentId || !action) return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
 
     if (action === "cancel") {
+      const now = new Date().toISOString();
       const { error } = await admin
         .from("tournaments")
-        .update({ status: "cancelled", updated_at: new Date().toISOString() })
+        .update({ status: "cancelled", ended_at: now })
         .eq("id", tournamentId);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-      // Refund entry fees to participants
-      const { data: participants } = await admin
-        .from("tournament_participants")
-        .select("user_id, entry_fee_cents")
-        .eq("tournament_id", tournamentId);
+      // Fetch tournament to get entry fee for refunds
+      const { data: tournament } = await admin
+        .from("tournaments")
+        .select("entry_fee_cents")
+        .eq("id", tournamentId)
+        .single();
 
-      for (const p of participants || []) {
-        if (p.entry_fee_cents > 0) {
+      const entryFee = tournament?.entry_fee_cents || 0;
+
+      // Refund entry fees to participants
+      if (entryFee > 0) {
+        const { data: participants } = await admin
+          .from("tournament_participants")
+          .select("player_id, paid_entry_fee")
+          .eq("tournament_id", tournamentId)
+          .eq("paid_entry_fee", true);
+
+        for (const p of participants || []) {
           await admin.rpc("credit_wallet", {
-            p_user_id: p.user_id,
-            p_amount_cents: p.entry_fee_cents,
+            p_user_id: p.player_id,
+            p_amount_cents: entryFee,
           });
         }
       }
     } else if (action === "force_finish") {
+      const now = new Date().toISOString();
       const { error } = await admin
         .from("tournaments")
-        .update({ status: "finished", updated_at: new Date().toISOString() })
+        .update({ status: "finished", ended_at: now })
         .eq("id", tournamentId);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     } else {
