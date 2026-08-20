@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { Search, Check, X, Loader2 } from "lucide-react";
+import { Check, Loader2, AlertCircle } from "lucide-react";
 
 type ChessLevel = "beginner" | "intermediate" | "expert";
 
@@ -41,11 +41,16 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [refCode, setRefCode] = useState<string | null>(null);
 
-  // Chess.com verification state
-  const [chesscomUsername, setChesscomUsername] = useState("");
-  const [chesscomVerifying, setChesscomVerifying] = useState(false);
-  const [chesscomVerified, setChesscomVerified] = useState<any>(null);
-  const [chesscomError, setChesscomError] = useState<string | null>(null);
+  // Chess.com auto-detection state
+  const [chesscomChecking, setChesscomChecking] = useState(false);
+  const [chesscomVerified, setChesscomVerified] = useState<{
+    username: string;
+    avatar: string;
+    rating: number;
+    ratings: { blitz: number | null; rapid: number | null; bullet: number | null };
+  } | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastCheckedRef = useRef<string>("");
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -65,35 +70,71 @@ export default function SignupPage() {
     }
   }, [searchParams]);
 
-  const verifyChesscom = async () => {
-    if (!chesscomUsername.trim()) return;
-    setChesscomVerifying(true);
-    setChesscomError(null);
+  // Auto-detect chess.com account when username changes
+  const checkChesscom = useCallback(async (name: string) => {
+    const clean = name.trim().toLowerCase();
+    if (!clean || clean.length < 3) {
+      setChesscomVerified(null);
+      setChesscomChecking(false);
+      return;
+    }
+    if (clean === lastCheckedRef.current) return;
+    lastCheckedRef.current = clean;
+
+    setChesscomChecking(true);
     setChesscomVerified(null);
+
     try {
       const res = await fetch("/api/chesscom/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: chesscomUsername.trim() }),
+        body: JSON.stringify({ username: clean }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setChesscomError(data.error || "Verification failed");
+        setChesscomVerified(null);
       } else {
-        setChesscomVerified(data);
+        setChesscomVerified({
+          username: data.username,
+          avatar: data.avatar || "",
+          rating: data.startingRating,
+          ratings: {
+            blitz: data.ratings?.blitz || null,
+            rapid: data.ratings?.rapid || null,
+            bullet: data.ratings?.bullet || null,
+          },
+        });
       }
     } catch {
-      setChesscomError("Failed to connect to Chess.com. You can skip this and pick a level instead.");
+      setChesscomVerified(null);
     } finally {
-      setChesscomVerifying(false);
+      setChesscomChecking(false);
     }
-  };
+  }, []);
+
+  // Debounced auto-detect on username change
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (username.trim().length >= 3) {
+      setChesscomChecking(true);
+      debounceRef.current = setTimeout(() => {
+        checkChesscom(username);
+      }, 600);
+    } else {
+      setChesscomChecking(false);
+      setChesscomVerified(null);
+    }
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [username, checkChesscom]);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!chessLevel && !chesscomVerified) {
-      setError("Please verify your Chess.com account or select your chess level");
+      setError("Please select your chess level");
       return;
     }
 
@@ -131,19 +172,17 @@ export default function SignupPage() {
         return;
       }
 
-      // Set initial ELO — use chess.com rating if verified, otherwise level-based
       try {
         await fetch("/api/auth/set-rating", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             userId: data.user.id,
-            chesscomRating: chesscomVerified?.startingRating || null,
+            chesscomRating: chesscomVerified?.rating || null,
             chesscomUsername: chesscomVerified?.username || null,
           }),
         });
 
-        // Create referral record if we have a ref code
         const ref = refCode || localStorage.getItem("ccb_ref_code");
         if (ref) {
           await fetch("/api/berry/referral/track", {
@@ -154,7 +193,6 @@ export default function SignupPage() {
           localStorage.removeItem("ccb_ref_code");
         }
       } catch (postErr: any) {
-        // Non-critical — user is already signed up
         console.error("Post-signup error:", postErr);
       }
 
@@ -187,7 +225,7 @@ export default function SignupPage() {
           <p className="text-sm text-ccb-muted mt-1">Create your free account</p>
           {refCode && (
             <p className="text-xs text-ccb-primary mt-2 font-medium">
-              🍒 Referred by {refCode} — they'll earn 1,000 CCB when you start playing!
+              🍒 Referred by {refCode} — they&apos;ll earn 1,000 CCB when you start playing!
             </p>
           )}
         </div>
@@ -200,18 +238,69 @@ export default function SignupPage() {
 
         <form onSubmit={handleSignup} className="card space-y-5">
           <div>
-            <label htmlFor="username" className="text-sm font-medium block mb-1.5">Username</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="input"
-              placeholder="ChessWarrior42"
-              required
-              minLength={3}
-              maxLength={20}
-            />
-            <p className="text-xs text-ccb-muted mt-1">This will also be your referral code.</p>
+            <label htmlFor="username" className="text-sm font-medium block mb-1.5">
+              Username
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="input w-full pr-10"
+                placeholder="Your Chess.com username or a new one"
+                required
+                minLength={3}
+                maxLength={20}
+              />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                {chesscomChecking && username.trim().length >= 3 && (
+                  <Loader2 className="w-4 h-4 animate-spin text-ccb-muted" />
+                )}
+                {chesscomVerified && !chesscomChecking && (
+                  <Check className="w-4 h-4 text-green-500" />
+                )}
+              </div>
+            </div>
+
+            {/* Auto-detected Chess.com profile */}
+            {chesscomVerified && (
+              <div className="mt-2 rounded-lg border border-green-500/30 bg-green-500/10 p-3 flex items-center gap-3">
+                {chesscomVerified.avatar ? (
+                  <img src={chesscomVerified.avatar} alt="" className="w-10 h-10 rounded-full" />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-ccb-surface border border-ccb-border flex items-center justify-center">
+                    <span className="text-sm font-bold">{chesscomVerified.username?.[0]?.toUpperCase()}</span>
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    <span className="text-green-500 font-semibold">Chess.com detected</span> · {chesscomVerified.username}
+                  </p>
+                  <div className="flex gap-3 text-xs text-ccb-muted mt-0.5">
+                    {chesscomVerified.ratings.rapid && <span>Rapid: {chesscomVerified.ratings.rapid}</span>}
+                    {chesscomVerified.ratings.blitz && <span>Blitz: {chesscomVerified.ratings.blitz}</span>}
+                    {chesscomVerified.ratings.bullet && <span>Bullet: {chesscomVerified.ratings.bullet}</span>}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-lg font-bold text-ccb-primary">{chesscomVerified.rating}</div>
+                  <div className="text-[10px] text-ccb-muted">Starting ELO</div>
+                </div>
+              </div>
+            )}
+
+            {username.trim().length >= 3 && !chesscomChecking && !chesscomVerified && (
+              <p className="text-xs text-ccb-muted mt-1.5 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                Not a Chess.com account — pick your level below
+              </p>
+            )}
+
+            <p className="text-xs text-ccb-muted mt-1">
+              {chesscomVerified
+                ? "Your Chess.com rating will be used as your starting ELO."
+                : "If this matches your Chess.com username, we'll auto-detect your rating."}
+            </p>
           </div>
 
           <div>
@@ -238,125 +327,53 @@ export default function SignupPage() {
             />
           </div>
 
-          {/* Chess.com Verification Section */}
-          <div>
-            <label className="text-sm font-medium block mb-1.5">
-              Chess.com Username <span className="text-ccb-muted font-normal">(optional — for accurate rating)</span>
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={chesscomUsername}
-                onChange={(e) => {
-                  setChesscomUsername(e.target.value);
-                  setChesscomVerified(null);
-                  setChesscomError(null);
-                }}
-                className="input flex-1"
-                placeholder="e.g. magnuscarlsen"
-              />
-              <button
-                type="button"
-                onClick={verifyChesscom}
-                disabled={chesscomVerifying || !chesscomUsername.trim()}
-                className="btn-secondary px-4 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                {chesscomVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                <span className="ml-1.5 text-sm">{chesscomVerifying ? "..." : "Verify"}</span>
-              </button>
-            </div>
-
-            {/* Verification result */}
-            {chesscomVerified && (
-              <div className="mt-2 rounded-lg border border-green-500/30 bg-green-500/10 p-3 flex items-center gap-3">
-                {chesscomVerified.avatar ? (
-                  <img src={chesscomVerified.avatar} alt="" className="w-10 h-10 rounded-full" />
-                ) : (
-                  <div className="w-10 h-10 rounded-full bg-ccb-surface border border-ccb-border flex items-center justify-center">
-                    <span className="text-sm font-bold">{chesscomVerified.username?.[0]?.toUpperCase()}</span>
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-medium truncate">{chesscomVerified.username}</span>
-                    <Check className="w-3.5 h-3.5 text-green-500 shrink-0" />
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-ccb-muted mt-0.5">
-                    {chesscomVerified.ratings?.blitz && <span>Blitz: {chesscomVerified.ratings.blitz}</span>}
-                    {chesscomVerified.ratings?.rapid && <span>Rapid: {chesscomVerified.ratings.rapid}</span>}
-                    {chesscomVerified.ratings?.bullet && <span>Bullet: {chesscomVerified.ratings.bullet}</span>}
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="text-lg font-bold text-ccb-primary">{chesscomVerified.startingRating}</div>
-                  <div className="text-[10px] text-ccb-muted">Start ELO</div>
-                </div>
-              </div>
-            )}
-
-            {chesscomError && (
-              <div className="mt-2 rounded-lg bg-ccb-danger/10 border border-ccb-danger/30 text-ccb-danger px-3 py-2 text-xs flex items-center gap-1.5">
-                <X className="w-3.5 h-3.5 shrink-0" /> {chesscomError}
-              </div>
-            )}
-
-            {chesscomVerified && (
-              <p className="text-xs text-green-500 mt-1.5 flex items-center gap-1">
-                <Check className="w-3 h-3" /> Your starting rating will be {chesscomVerified.startingRating} ELO (from Chess.com {chesscomVerified.ratings?.rapid ? "Rapid" : chesscomVerified.ratings?.blitz ? "Blitz" : chesscomVerified.ratings?.bullet ? "Bullet" : "Daily"})
-              </p>
-            )}
-          </div>
-
-          {/* Chess Level Selector — only show if chess.com not verified */}
+          {/* Chess Level Selector — only show if chess.com NOT auto-detected */}
           {!chesscomVerified && (
             <div>
-              <label className="text-sm font-medium block mb-2">
-                Your Chess Level <span className="text-ccb-muted font-normal">(or verify Chess.com above)</span>
-              </label>
-              <p className="text-xs text-ccb-muted mb-3">This sets your starting rating. You'll climb or fall from here.</p>
+              <label className="text-sm font-medium block mb-1.5">Your Chess Level</label>
               <div className="grid grid-cols-3 gap-2">
                 {(Object.keys(LEVEL_CONFIG) as ChessLevel[]).map((level) => {
                   const config = LEVEL_CONFIG[level];
-                  const selected = chessLevel === level;
                   return (
                     <button
                       key={level}
                       type="button"
                       onClick={() => setChessLevel(level)}
-                      className={`relative rounded-xl border-2 p-3 text-center transition-all ${
-                        selected
-                          ? `${config.accent} scale-[1.03]`
-                          : "border-ccb-border bg-ccb-surface hover:border-ccb-muted"
+                      className={`rounded-lg border p-3 text-center transition-all ${
+                        chessLevel === level
+                          ? config.accent + " ring-2 ring-offset-2 ring-offset-ccb-surface"
+                          : "border-ccb-border bg-ccb-surface hover:bg-ccb-card"
                       }`}
                     >
-                      <div className="text-2xl mb-1">{config.icon}</div>
-                      <div className="text-xs font-bold">{config.label}</div>
-                      <div className="text-[10px] text-ccb-muted mt-0.5">{config.rating} ELO</div>
-                      {selected && (
-                        <div className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-ccb-primary flex items-center justify-center">
-                          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                        </div>
-                      )}
+                      <span className="text-2xl block mb-1">{config.icon}</span>
+                      <span className="text-xs font-semibold block">{config.label}</span>
+                      <span className="text-[10px] text-ccb-muted block mt-0.5">~{config.rating}</span>
                     </button>
                   );
                 })}
               </div>
               {chessLevel && (
-                <p className="text-xs text-ccb-muted mt-2 text-center">{LEVEL_CONFIG[chessLevel].blurb}</p>
+                <p className="text-xs text-ccb-muted mt-1.5">
+                  {LEVEL_CONFIG[chessLevel].blurb}. Starting ELO: {LEVEL_CONFIG[chessLevel].rating}
+                </p>
               )}
             </div>
           )}
 
-          <button type="submit" disabled={loading || (!chessLevel && !chesscomVerified)} className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed">
-            {loading ? "Creating account..." : "Sign up"}
+          <button
+            type="submit"
+            disabled={loading || (!chessLevel && !chesscomVerified)}
+            className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? "Creating account..." : "Create account"}
           </button>
         </form>
 
         <p className="text-center text-sm text-ccb-muted mt-6">
           Already have an account?{" "}
-          <Link href={loginLink} className="text-ccb-primary hover:underline">Log in</Link>
+          <Link href={loginLink} className="text-ccb-primary hover:underline">
+            Log in
+          </Link>
         </p>
       </div>
     </div>

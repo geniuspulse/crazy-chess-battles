@@ -31,7 +31,6 @@ export default function LoginPage() {
       setError(error.message);
       setLoading(false);
     } else {
-      // Preserve action param (e.g., ?action=join) for tournament auto-join flow
       const fullRedirect = actionParam
         ? `${redirectPath}?action=${actionParam}`
         : redirectPath;
@@ -40,7 +39,6 @@ export default function LoginPage() {
     }
   };
 
-  // Build signup link with redirect + action params preserved
   const signupParams = new URLSearchParams();
   if (redirectPath !== "/dashboard") signupParams.set("redirect", redirectPath);
   if (actionParam) signupParams.set("action", actionParam);
