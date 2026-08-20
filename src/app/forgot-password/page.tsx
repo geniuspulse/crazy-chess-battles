@@ -37,6 +37,7 @@ export default function ForgotPasswordPage() {
             <div className="w-10 h-10 rounded-lg bg-ccb-primary flex items-center justify-center">
               <span className="text-white font-bold text-xl">♞</span>
             </div>
+            <span className="text-lg font-bold">Crazy Chess Battles</span>
           </Link>
           <h1 className="text-2xl font-bold mt-4">Forgot Password</h1>
           <p className="text-sm text-ccb-muted mt-1">We'll send you a reset link</p>

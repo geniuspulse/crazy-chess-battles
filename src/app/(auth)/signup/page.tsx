@@ -244,6 +244,7 @@ export default function SignupPage() {
             <div className="w-10 h-10 rounded-lg bg-ccb-primary flex items-center justify-center">
               <span className="text-white font-bold text-xl">♞</span>
             </div>
+            <span className="text-lg font-bold">Crazy Chess Battles</span>
           </Link>
         </div>
 
