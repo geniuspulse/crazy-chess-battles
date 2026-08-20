@@ -3,21 +3,18 @@ import { DEFAULT_CONFIG } from "@/lib/battles/battle-helpers";
 
 /**
  * Try to find a match for the player in the queue.
- * Matches by same stake + compatible rating.
- *
- * Race condition fix: Uses an atomic conditional UPDATE to claim the opponent's
- * queue entry (status='waiting' -> status='matched'), preventing two players
- * from matching the same opponent simultaneously.
+ * Matches by same stake + compatible rating (+ same time control if provided).
  */
 export async function tryMatch(
   admin: ReturnType<typeof createAdminClient>,
   playerId: string,
   stakeCents: number,
   playerRating: number,
-  config: typeof DEFAULT_CONFIG
+  config: typeof DEFAULT_CONFIG,
+  timeControl?: string
 ): Promise<{ matched: boolean; battleId?: string } | null> {
   // Find an opponent in the same stake queue with compatible rating
-  const { data: candidates } = await admin
+  let query = admin
     .from("battle_queue")
     .select("id, player_id, rating, created_at")
     .eq("stake_cents", stakeCents)
@@ -25,6 +22,37 @@ export async function tryMatch(
     .neq("player_id", playerId)
     .order("created_at", { ascending: true });
 
+  // If time_control column exists, filter by it
+  if (timeControl) {
+    query = query.eq("time_control", timeControl) as any;
+  }
+
+  const { data: candidates } = await query;
+
+  // If filtering by time_control failed (column may not exist), retry without it
+  if (!candidates && timeControl) {
+    const { data: fallback } = await admin
+      .from("battle_queue")
+      .select("id, player_id, rating, created_at")
+      .eq("stake_cents", stakeCents)
+      .eq("status", "waiting")
+      .neq("player_id", playerId)
+      .order("created_at", { ascending: true });
+
+    return attemptMatch(admin, fallback, playerId, stakeCents, playerRating, config);
+  }
+
+  return attemptMatch(admin, candidates, playerId, stakeCents, playerRating, config);
+}
+
+async function attemptMatch(
+  admin: ReturnType<typeof createAdminClient>,
+  candidates: any[] | null,
+  playerId: string,
+  stakeCents: number,
+  playerRating: number,
+  config: typeof DEFAULT_CONFIG
+): Promise<{ matched: boolean; battleId?: string } | null> {
   if (!candidates || candidates.length === 0) return { matched: false };
 
   const range = config.rating_range;
@@ -35,14 +63,11 @@ export async function tryMatch(
 
   if (eligible.length === 0) return { matched: false };
 
-  // Pick the closest rating match
   eligible.sort((a: { rating: number }, b: { rating: number }) =>
     Math.abs(a.rating - playerRating) - Math.abs(b.rating - playerRating)
   );
 
-  // Try to atomically claim each eligible opponent (prevents race condition)
   for (const opponent of eligible) {
-    // Atomic claim: only update if still 'waiting' (prevents double-matching)
     const { data: claimed, error: claimErr } = await admin
       .from("battle_queue")
       .update({ status: "matched", matched_at: new Date().toISOString() })
@@ -51,10 +76,8 @@ export async function tryMatch(
       .select("id")
       .single();
 
-    // If we couldn't claim this opponent (already matched by someone else), try next
     if (claimErr || !claimed) continue;
 
-    // Successfully claimed — create the battle
     const pot = stakeCents * 2;
     const fee = Math.round(pot * (config.platform_fee_pct / 100));
     const payout = pot - fee;
@@ -77,7 +100,6 @@ export async function tryMatch(
 
     if (battleErr || !battle) {
       console.error("Battle creation failed:", battleErr);
-      // Release the opponent's queue entry back to waiting
       await admin
         .from("battle_queue")
         .update({ status: "waiting", matched_at: null })
@@ -85,19 +107,16 @@ export async function tryMatch(
       return { matched: false };
     }
 
-    // Link the battle to the opponent's queue entry
     await admin
       .from("battle_queue")
       .update({ battle_id: battle.id })
       .eq("id", opponent.id);
 
-    // Record escrow for both players
     await admin.from("battle_escrow").insert([
       { battle_id: battle.id, player_id: playerId, amount_cents: stakeCents, status: "locked" },
       { battle_id: battle.id, player_id: opponent.player_id, amount_cents: stakeCents, status: "locked" },
     ]);
 
-    // Find and update the player's own queue entry
     const { data: playerQueue } = await admin
       .from("battle_queue")
       .select("id")
@@ -115,6 +134,5 @@ export async function tryMatch(
     return { matched: true, battleId: battle.id };
   }
 
-  // All eligible opponents were already claimed by other players
   return { matched: false };
 }

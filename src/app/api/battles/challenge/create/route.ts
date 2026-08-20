@@ -3,18 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DEFAULT_CONFIG } from "@/lib/battles/battle-helpers";
 
-/**
- * Create a stake-based battle challenge (Challenge a Friend from the Battles page).
- * Locks the challenger's stake in escrow immediately, then returns a shareable link.
- * Body: { stakeCents: number }
- */
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { stakeCents } = await req.json();
+    const { stakeCents, timeControl } = await req.json();
     if (!stakeCents || stakeCents <= 0) {
       return NextResponse.json({ error: "Invalid stake amount" }, { status: 400 });
     }
@@ -33,7 +28,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid stake level" }, { status: 400 });
     }
 
-    // Check player isn't in an active battle already
     const { data: activeBattle } = await admin
       .from("battles")
       .select("id")
@@ -64,7 +58,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Lock the challenger's stake — debit wallet now
     const { error: debitErr } = await admin.rpc("debit_wallet", {
       p_user_id: user.id,
       p_amount_cents: stakeCents,
@@ -83,24 +76,51 @@ export async function POST(req: NextRequest) {
       reference: `battle_challenge:${user.id}:${stakeCents}`,
     });
 
+    // Insert with time_control if the column exists
+    const insertData: any = {
+      challenger_id: user.id,
+      stake_cents: stakeCents,
+      status: "pending",
+    };
+    if (timeControl) {
+      insertData.time_control = timeControl;
+    }
+
     const { data: challenge, error: chErr } = await admin
       .from("battle_challenges")
-      .insert({
-        challenger_id: user.id,
-        stake_cents: stakeCents,
-        status: "pending",
-      })
+      .insert(insertData)
       .select("id")
       .single();
 
+    // Retry without time_control if column doesn't exist
+    if (chErr && timeControl) {
+      delete insertData.time_control;
+      const { data: retryChallenge, error: retryErr } = await admin
+        .from("battle_challenges")
+        .insert(insertData)
+        .select("id")
+        .single();
+
+      if (retryErr || !retryChallenge) {
+        await admin.rpc("credit_wallet", { p_user_id: user.id, p_amount_cents: stakeCents });
+        return NextResponse.json({ error: "Failed to create challenge" }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        challengeId: retryChallenge.id,
+        timeControl,
+        url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-github.vercel.app"}/battle-challenge/${retryChallenge.id}`,
+      });
+    }
+
     if (chErr || !challenge) {
-      // Refund the debit
       await admin.rpc("credit_wallet", { p_user_id: user.id, p_amount_cents: stakeCents });
       return NextResponse.json({ error: "Failed to create challenge" }, { status: 500 });
     }
 
     return NextResponse.json({
       challengeId: challenge.id,
+      timeControl,
       url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-github.vercel.app"}/battle-challenge/${challenge.id}`,
     });
   } catch (e: any) {
