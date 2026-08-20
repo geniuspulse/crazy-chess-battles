@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
-import { Clock, Flag, ArrowLeft, Bot, Volume2, VolumeX, List, Smile, Palette, X } from "lucide-react";
+import { Clock, Flag, ArrowLeft, Bot, Volume2, VolumeX, List, Palette, X } from "lucide-react";
 import Link from "next/link";
 import { getBestMove, type AIDifficulty } from "@/lib/game/chess-ai";
 import { getCapturedPieces, getCheckSquare, buildSquareStyles } from "@/lib/game/board-helpers";
@@ -16,7 +16,6 @@ import CapturedPieces from "./captured-pieces";
 import VictoryOverlay, { type GameOutcome } from "./victory-overlay";
 import PromotionDialog from "./promotion-dialog";
 import BoardThemePicker from "./board-theme-picker";
-import QuickReactions from "./quick-reactions";
 import OpeningBadge from "./opening-badge";
 
 interface ComputerGameProps {
@@ -41,7 +40,7 @@ const STATUS_LABELS: Record<string, string> = {
   timeout: "Time out",
 };
 
-type SheetType = "moves" | "reactions" | "theme" | null;
+type SheetType = "moves" | "theme" | null;
 
 function formatClock(ms: number | null): string {
   if (ms === null || ms === undefined) return "—";
@@ -528,9 +527,6 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
                 <button onClick={() => toggleSheet("moves")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "moves" ? "text-ccb-primary" : "text-ccb-muted"}`}>
                   <List className="w-5 h-5" /><span className="text-[10px]">Moves</span>
                 </button>
-                <button onClick={() => toggleSheet("reactions")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "reactions" ? "text-ccb-primary" : "text-ccb-muted"}`}>
-                  <Smile className="w-5 h-5" /><span className="text-[10px]">React</span>
-                </button>
                 <button onClick={() => toggleSheet("theme")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "theme" ? "text-ccb-primary" : "text-ccb-muted"}`}>
                   <Palette className="w-5 h-5" /><span className="text-[10px]">Board</span>
                 </button>
@@ -545,12 +541,12 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
             )}
           </div>
 
-          {/* Mobile bottom sheet — Moves / Reactions / Theme */}
+          {/* Mobile bottom sheet — Moves / Theme */}
           {activeSheet && (
             <div className="lg:hidden absolute inset-x-2 bottom-16 z-20 max-h-[45%] rounded-xl border border-ccb-border bg-ccb-card shadow-2xl animate-sheet-up flex flex-col overflow-hidden">
               <div className="flex items-center justify-between px-3 py-2 border-b border-ccb-border shrink-0">
                 <span className="text-sm font-medium">
-                  {activeSheet === "moves" ? "Move History" : activeSheet === "reactions" ? "Quick Reactions" : "Board Theme"}
+                  {activeSheet === "moves" ? "Move History" : "Board Theme"}
                 </span>
                 <button onClick={() => setActiveSheet(null)} className="text-ccb-muted hover:text-ccb-primary p-1">
                   <X className="w-4 h-4" />
@@ -561,7 +557,6 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
                   moveHistory.length >= 2 && <div className="mb-2"><OpeningBadge moves={moveHistory} /></div>
                 )}
                 {activeSheet === "moves" && <MoveHistory moves={moveHistory} />}
-                {activeSheet === "reactions" && <QuickReactions position="bottom" />}
                 {activeSheet === "theme" && <BoardThemePicker inline onThemeChange={setBoardTheme} />}
               </div>
             </div>
@@ -603,10 +598,6 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
               Move {moveCount} · {DIFFICULTY_LABELS[difficulty]} · vs Computer
             </div>
 
-            {/* Quick reactions */}
-            <div className="shrink-0">
-              <QuickReactions position="side" />
-            </div>
           </div>
         </div>
       </div>

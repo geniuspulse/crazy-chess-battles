@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
 import { useRealtimeGame, type GameState } from "@/hooks/use-realtime-game";
-import { Clock, Flag, Eye, ArrowLeft, Volume2, VolumeX, List, Smile, Palette, X, MessageCircle } from "lucide-react";
+import { Clock, Flag, Eye, ArrowLeft, Volume2, VolumeX, List, Palette, X, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { getCapturedPieces, getCheckSquare, buildSquareStyles } from "@/lib/game/board-helpers";
 import { playSound, detectMoveSound, setSoundEnabled } from "@/lib/game/sound";
@@ -16,7 +16,6 @@ import CapturedPieces from "./captured-pieces";
 import VictoryOverlay, { type GameOutcome } from "./victory-overlay";
 import PromotionDialog from "./promotion-dialog";
 import BoardThemePicker from "./board-theme-picker";
-import QuickReactions from "./quick-reactions";
 import OpeningBadge from "./opening-badge";
 import GameChat from "./game-chat";
 
@@ -37,7 +36,7 @@ const STATUS_LABELS: Record<string, string> = {
   timeout: "Time out",
 };
 
-type SheetType = "moves" | "reactions" | "theme" | "chat" | null;
+type SheetType = "moves" | "theme" | "chat" | null;
 
 function formatClock(ms: number | null): string {
   if (ms === null || ms === undefined) return "—";
@@ -426,11 +425,8 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
                 <button onClick={() => toggleSheet("moves")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "moves" ? "text-ccb-primary" : "text-ccb-muted"}`}>
                   <List className="w-5 h-5" /><span className="text-[10px]">Moves</span>
                 </button>
-                <button onClick={() => toggleSheet("reactions")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "reactions" ? "text-ccb-primary" : "text-ccb-muted"}`}>
-                  <Smile className="w-5 h-5" /><span className="text-[10px]">React</span>
                 <button onClick={() => toggleSheet("chat")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "chat" ? "text-ccb-primary" : "text-ccb-muted"}`}>
                   <MessageCircle className="w-5 h-5" /><span className="text-[10px]">Chat</span>
-                </button>
                 </button>
                 <button onClick={() => toggleSheet("theme")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "theme" ? "text-ccb-primary" : "text-ccb-muted"}`}>
                   <Palette className="w-5 h-5" /><span className="text-[10px]">Board</span>
@@ -443,7 +439,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
               <div className="lg:hidden absolute inset-x-2 bottom-16 z-20 max-h-[45%] rounded-xl border border-ccb-border bg-ccb-card shadow-2xl animate-sheet-up flex flex-col overflow-hidden">
                 <div className="flex items-center justify-between px-3 py-2 border-b border-ccb-border shrink-0">
                   <span className="text-sm font-medium">
-                    {activeSheet === "moves" ? "Move History" : activeSheet === "reactions" ? "Quick Reactions" : activeSheet === "chat" ? "Chat" : "Board Theme"}
+                    {activeSheet === "moves" ? "Move History" : activeSheet === "chat" ? "Chat" : "Board Theme"}
                   </span>
                   <button onClick={() => setActiveSheet(null)} className="text-ccb-muted hover:text-ccb-primary p-1">
                     <X className="w-4 h-4" />
@@ -454,7 +450,6 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
                     moveHistory.length >= 2 && <div className="mb-2"><OpeningBadge moves={moveHistory} /></div>
                   )}
                   {activeSheet === "moves" && <MoveHistory moves={moveHistory} />}
-                  {activeSheet === "reactions" && <QuickReactions position="bottom" />}
                 {activeSheet === "chat" && <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} />}
                   {activeSheet === "theme" && <BoardThemePicker inline onThemeChange={setBoardTheme} />}
                 </div>
@@ -500,9 +495,6 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
                   </div>
                   <div className="text-center text-xs text-ccb-muted shrink-0">
                     Move {game.move_count} · {game.time_control} · {game.rated ? "Ranked" : "Casual"}
-                  </div>
-                  <div className="shrink-0">
-                    <QuickReactions position="side" />
                   </div>
                 </>
               ) : (
@@ -631,11 +623,8 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
                 <button onClick={() => toggleSheet("moves")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "moves" ? "text-ccb-primary" : "text-ccb-muted"}`}>
                   <List className="w-5 h-5" /><span className="text-[10px]">Moves</span>
                 </button>
-                <button onClick={() => toggleSheet("reactions")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "reactions" ? "text-ccb-primary" : "text-ccb-muted"}`}>
-                  <Smile className="w-5 h-5" /><span className="text-[10px]">React</span>
                 <button onClick={() => toggleSheet("chat")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "chat" ? "text-ccb-primary" : "text-ccb-muted"}`}>
                   <MessageCircle className="w-5 h-5" /><span className="text-[10px]">Chat</span>
-                </button>
                 </button>
                 <button onClick={() => toggleSheet("theme")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "theme" ? "text-ccb-primary" : "text-ccb-muted"}`}>
                   <Palette className="w-5 h-5" /><span className="text-[10px]">Board</span>
@@ -656,7 +645,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
             <div className="lg:hidden absolute inset-x-2 bottom-16 z-20 max-h-[45%] rounded-xl border border-ccb-border bg-ccb-card shadow-2xl animate-sheet-up flex flex-col overflow-hidden">
               <div className="flex items-center justify-between px-3 py-2 border-b border-ccb-border shrink-0">
                 <span className="text-sm font-medium">
-                  {activeSheet === "moves" ? "Move History" : activeSheet === "reactions" ? "Quick Reactions" : activeSheet === "chat" ? "Chat" : "Board Theme"}
+                  {activeSheet === "moves" ? "Move History" : activeSheet === "chat" ? "Chat" : "Board Theme"}
                 </span>
                 <button onClick={() => setActiveSheet(null)} className="text-ccb-muted hover:text-ccb-primary p-1">
                   <X className="w-4 h-4" />
@@ -667,7 +656,6 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
                   moveHistory.length >= 2 && <div className="mb-2"><OpeningBadge moves={moveHistory} /></div>
                 )}
                 {activeSheet === "moves" && <MoveHistory moves={moveHistory} />}
-                {activeSheet === "reactions" && <QuickReactions position="bottom" />}
                 {activeSheet === "chat" && <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} />}
                 {activeSheet === "theme" && <BoardThemePicker inline onThemeChange={setBoardTheme} />}
               </div>
@@ -714,9 +702,6 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
                 </div>
                 <div className="text-center text-xs text-ccb-muted shrink-0">
                   Move {game.move_count} · {game.time_control}
-                </div>
-                <div className="shrink-0">
-                  <QuickReactions position="side" />
                 </div>
               </>
             ) : (
