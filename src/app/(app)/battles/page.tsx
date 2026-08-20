@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Swords, Clock, Coins, Zap, AlertCircle, Loader2 } from "lucide-react";
+import { Swords, Clock, Coins, Zap, AlertCircle, Loader2, Link2, Copy, Check } from "lucide-react";
 
 const DEFAULT_STAKES = [50000, 100000, 250000, 500000, 1000000];
 
@@ -34,6 +34,9 @@ export default function BattlesPage() {
   const [myRating, setMyRating] = useState(1200);
   const [error, setError] = useState<string | null>(null);
   const [searchSeconds, setSearchSeconds] = useState(0);
+  const [creatingChallenge, setCreatingChallenge] = useState(false);
+  const [challengeUrl, setChallengeUrl] = useState<string | null>(null);
+  const [challengeCopied, setChallengeCopied] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const searchIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -146,6 +149,39 @@ export default function BattlesPage() {
     }
   };
 
+  const handleChallengeFriend = async () => {
+    if (selectedStake === null) return;
+    setError(null);
+    setChallengeUrl(null);
+
+    if (balance < selectedStake) {
+      setError(`Insufficient balance. You need ${formatMKK(selectedStake)}. Deposit funds first.`);
+      return;
+    }
+
+    setCreatingChallenge(true);
+    try {
+      const res = await fetch("/api/battles/challenge/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stakeCents: selectedStake }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Failed to create challenge");
+        setCreatingChallenge(false);
+        return;
+      }
+
+      // Stake is now locked — go to the waiting screen and share the link from there
+      router.push(`/battle-challenge/${data.challengeId}`);
+    } catch {
+      setError("Failed to create challenge");
+      setCreatingChallenge(false);
+    }
+  };
+
   const handleLeaveQueue = async () => {
     await fetch("/api/battles/leave", { method: "POST" });
     setState("select");
@@ -191,7 +227,7 @@ export default function BattlesPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 sm:py-10">
+    <div className="max-w-2xl mx-auto px-4 py-6 pb-28 sm:py-10 sm:pb-10">
       {/* Header */}
       <div className="text-center mb-8">
         <div className="inline-flex items-center gap-2 mb-2">
@@ -284,6 +320,40 @@ export default function BattlesPage() {
             <Swords className="w-5 h-5" />
             ENTER BATTLE
           </button>
+
+          <div className="mt-3 flex items-center gap-3">
+            <div className="flex-1 h-px bg-ccb-border" />
+            <span className="text-xs text-ccb-muted">or</span>
+            <div className="flex-1 h-px bg-ccb-border" />
+          </div>
+
+          {challengeUrl ? (
+            <div className="mt-3 p-3 rounded-xl bg-ccb-surface border border-ccb-border">
+              <p className="text-xs text-ccb-muted mb-2">Share this link with your friend:</p>
+              <div className="flex items-center gap-2">
+                <input readOnly value={challengeUrl} className="input-field flex-1 text-xs" onClick={(e) => (e.target as HTMLInputElement).select()} />
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(challengeUrl);
+                    setChallengeCopied(true);
+                    setTimeout(() => setChallengeCopied(false), 2000);
+                  }}
+                  className="btn-secondary px-3 shrink-0"
+                >
+                  {challengeCopied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={handleChallengeFriend}
+              disabled={selectedStake === null || creatingChallenge}
+              className="w-full mt-3 py-3.5 rounded-xl font-semibold text-ccb-text bg-ccb-surface border border-ccb-border disabled:opacity-50 disabled:cursor-not-allowed hover:border-ccb-primary/50 transition-colors flex items-center justify-center gap-2"
+            >
+              {creatingChallenge ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+              {creatingChallenge ? "Creating link..." : "Challenge a Friend"}
+            </button>
+          )}
         </div>
       )}
 

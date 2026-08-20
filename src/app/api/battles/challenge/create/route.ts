@@ -1,0 +1,109 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { DEFAULT_CONFIG } from "@/lib/battles/battle-helpers";
+
+/**
+ * Create a stake-based battle challenge (Challenge a Friend from the Battles page).
+ * Locks the challenger's stake in escrow immediately, then returns a shareable link.
+ * Body: { stakeCents: number }
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { stakeCents } = await req.json();
+    if (!stakeCents || stakeCents <= 0) {
+      return NextResponse.json({ error: "Invalid stake amount" }, { status: 400 });
+    }
+
+    const admin = createAdminClient();
+
+    const { data: configRow } = await admin.from("battle_config").select("*").limit(1).single();
+    const config = { ...DEFAULT_CONFIG, ...configRow };
+
+    if (!config.enabled) {
+      return NextResponse.json({ error: "Chess Battles are currently disabled" }, { status: 403 });
+    }
+
+    const allowedStakes = config.stake_levels as number[];
+    if (!allowedStakes.includes(stakeCents)) {
+      return NextResponse.json({ error: "Invalid stake level" }, { status: 400 });
+    }
+
+    // Check player isn't in an active battle already
+    const { data: activeBattle } = await admin
+      .from("battles")
+      .select("id")
+      .or(`white_player_id.eq.${user.id},black_player_id.eq.${user.id}`)
+      .in("status", ["pending", "playing", "draw_armageddon"])
+      .limit(1);
+
+    if (activeBattle && activeBattle.length > 0) {
+      return NextResponse.json(
+        { error: "You have an active battle. Finish it first." },
+        { status: 400 }
+      );
+    }
+
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("wallet_balance_cents")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+
+    const balance = profile.wallet_balance_cents ?? 0;
+    if (balance < stakeCents) {
+      return NextResponse.json(
+        { error: `Insufficient balance. You need at least MK ${(stakeCents / 100).toLocaleString()}.` },
+        { status: 402 }
+      );
+    }
+
+    // Lock the challenger's stake — debit wallet now
+    const { error: debitErr } = await admin.rpc("debit_wallet", {
+      p_user_id: user.id,
+      p_amount_cents: stakeCents,
+    });
+
+    if (debitErr) {
+      console.error("Challenge escrow debit failed:", debitErr);
+      return NextResponse.json({ error: "Failed to lock stake. Try again." }, { status: 500 });
+    }
+
+    await admin.from("deposits").insert({
+      user_id: user.id,
+      amount_cents: stakeCents,
+      status: "success",
+      method: "battle_escrow",
+      reference: `battle_challenge:${user.id}:${stakeCents}`,
+    });
+
+    const { data: challenge, error: chErr } = await admin
+      .from("battle_challenges")
+      .insert({
+        challenger_id: user.id,
+        stake_cents: stakeCents,
+        status: "pending",
+      })
+      .select("id")
+      .single();
+
+    if (chErr || !challenge) {
+      // Refund the debit
+      await admin.rpc("credit_wallet", { p_user_id: user.id, p_amount_cents: stakeCents });
+      return NextResponse.json({ error: "Failed to create challenge" }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      challengeId: challenge.id,
+      url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-github.vercel.app"}/battle-challenge/${challenge.id}`,
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || "Server error" }, { status: 500 });
+  }
+}
