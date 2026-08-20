@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
@@ -11,7 +11,10 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
+
+  const redirectPath = searchParams.get("redirect") || "/dashboard";
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,11 +30,15 @@ export default function LoginPage() {
       setError(error.message);
       setLoading(false);
     } else {
-      const params = new URLSearchParams(window.location.search);
-      router.push(params.get("redirect") || "/dashboard");
+      router.push(redirectPath);
       router.refresh();
     }
   };
+
+  // Build signup link with redirect param preserved
+  const signupLink = redirectPath !== "/dashboard"
+    ? `/signup?redirect=${encodeURIComponent(redirectPath)}`
+    : "/signup";
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
@@ -85,7 +92,9 @@ export default function LoginPage() {
 
         <p className="text-center text-sm text-ccb-muted mt-6">
           New to CCB?{" "}
-          <Link href="/signup" className="text-ccb-primary hover:underline">Create an account</Link>
+          <Link href={signupLink} className="text-ccb-primary hover:underline">
+            Create an account
+          </Link>
         </p>
       </div>
     </div>

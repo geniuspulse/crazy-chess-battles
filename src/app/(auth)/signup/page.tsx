@@ -43,6 +43,9 @@ export default function SignupPage() {
   const searchParams = useSearchParams();
   const supabase = createClient();
 
+  // Capture redirect path from URL
+  const redirectPath = searchParams.get("redirect") || "/dashboard";
+
   // Capture referral code from URL or localStorage
   useEffect(() => {
     const ref = searchParams.get("ref");
@@ -108,9 +111,14 @@ export default function SignupPage() {
       }
     }
 
-    router.push("/dashboard");
+    router.push(redirectPath);
     router.refresh();
   };
+
+  // Build login link with redirect param preserved
+  const loginLink = redirectPath !== "/dashboard"
+    ? `/login?redirect=${encodeURIComponent(redirectPath)}`
+    : "/login";
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-8">
@@ -219,7 +227,7 @@ export default function SignupPage() {
 
         <p className="text-center text-sm text-ccb-muted mt-6">
           Already have an account?{" "}
-          <Link href="/login" className="text-ccb-primary hover:underline">Log in</Link>
+          <Link href={loginLink} className="text-ccb-primary hover:underline">Log in</Link>
         </p>
       </div>
     </div>

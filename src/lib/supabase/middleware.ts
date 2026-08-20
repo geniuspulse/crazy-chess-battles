@@ -52,9 +52,12 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Redirect to dashboard if already logged in and on auth pages
+  // But respect the redirect param if present (e.g. coming from a challenge link)
   if (user && (request.nextUrl.pathname === "/login" || request.nextUrl.pathname === "/signup")) {
+    const redirect = request.nextUrl.searchParams.get("redirect");
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = redirect || "/dashboard";
+    url.searchParams.delete("redirect");
     return NextResponse.redirect(url);
   }
 
