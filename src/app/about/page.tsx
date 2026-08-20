@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Trophy, Zap, Shield, Users, Heart } from "lucide-react";
+import { ArrowRight, Trophy, Zap, Shield, Users, Heart, Quote } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -23,9 +23,9 @@ export default function AboutPage() {
         </div>
       </nav>
 
-      {/* Mission */}
-      <section className="px-4 py-12 sm:py-20">
-        <div className="max-w-2xl mx-auto text-center">
+      {/* Hero */}
+      <section className="px-4 py-12 sm:py-20 text-center">
+        <div className="max-w-2xl mx-auto">
           <h1 className="text-2xl sm:text-4xl font-bold tracking-tight mb-4">
             Chess is <span className="text-ccb-primary">Africa&apos;s</span> game too
           </h1>
@@ -40,8 +40,97 @@ export default function AboutPage() {
         </div>
       </section>
 
+      {/* Founder's Story */}
+      <section className="border-t border-ccb-border px-4 py-12 sm:py-20 bg-ccb-surface/30">
+        <div className="max-w-2xl mx-auto">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center gap-2 rounded-full border border-ccb-border bg-ccb-card px-4 py-1.5 mb-4">
+              <Quote className="w-3.5 h-3.5 text-ccb-accent" />
+              <span className="text-xs sm:text-sm text-ccb-muted">A note from the founder</span>
+            </div>
+            <h2 className="text-lg sm:text-2xl font-bold">Why I built Crazy Chess Battles</h2>
+          </div>
+
+          <div className="space-y-4 text-sm text-ccb-muted leading-relaxed">
+            <p>
+              Hi, my name is Arthur Chibondo, and I learned how to play chess in 2017 when I was in Form 3
+              at Zomba Catholic Secondary School.
+            </p>
+            <p>
+              I was not a very good player, but I loved the game such that given the opportunity I was playing.
+            </p>
+            <p>
+              The first time I played online chess was in 2022 when I joined chess.com, and I loved the whole
+              experience.
+            </p>
+            <p>
+              In 2025, I found myself spending too much time playing chess on my phone, such that I once searched
+              for the concept of chess addiction because I felt addicted.
+            </p>
+
+            <blockquote className="border-l-2 border-ccb-primary pl-4 py-2 my-6 space-y-1 italic text-ccb-text/80">
+              <p>&ldquo;Do you go to tournaments?&rdquo;</p>
+              <p>&ldquo;You are always on chess!&rdquo;</p>
+              <p>&ldquo;You have 5 chess apps? Damn!&rdquo;</p>
+              <p>&ldquo;Are you that good at chess?&rdquo;</p>
+              <p>&ldquo;Did you play in the Vice Chancellor&apos;s Trophy?&rdquo;</p>
+            </blockquote>
+
+            <p>People would ask me.</p>
+            <p>But no.</p>
+            <p>I have never been so good at chess to compete at the big stage.</p>
+
+            <p className="text-ccb-text font-medium">
+              Which is why I created Crazy Chess Battles.
+            </p>
+
+            <p>
+              So that I could find people like me who were willing to join a battle, and compete in a tournament.
+            </p>
+
+            <p>
+              Crazy Chess Battles features both free and paid tournaments, which means, instead of just playing
+              for free, players can earn money by doing what they love.
+            </p>
+
+            <p className="text-lg font-semibold text-ccb-text">Chess.</p>
+
+            <p>
+              When I first floated this idea to my friend, they said it was too complicated to work.
+            </p>
+            <p>But I said bring it on.</p>
+            <p>I love me a good challenge.</p>
+
+            <p className="text-lg font-semibold text-ccb-text">
+              Chess is fun when it&apos;s crazy.
+            </p>
+            <p className="text-lg font-semibold text-ccb-text">
+              Chess is fun when it makes your blood boil.
+            </p>
+
+            <p>
+              Join a chess battle today, and I promise you, you will never quit until you become a general.
+            </p>
+
+            <p>I will see you in the lobby.</p>
+
+            <p className="text-base font-medium text-ccb-text">
+              Cheers ❤️⚔️
+            </p>
+
+            <div className="flex items-center gap-2 pt-4 border-t border-ccb-border mt-6">
+              <div className="w-8 h-8 rounded-full bg-ccb-primary/20 flex items-center justify-center text-xs font-bold text-ccb-primary">A</div>
+              <div>
+                <div className="text-sm font-medium text-ccb-text">Arthur Chibondo</div>
+                <div className="text-xs text-ccb-muted">Founder & CEO, Crazy Chess Battles</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Values */}
-      <section className="border-t border-ccb-border px-4 py-12 sm:py-16 bg-ccb-surface/30">
+      <section className="border-t border-ccb-border px-4 py-12 sm:py-16">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-lg sm:text-xl font-bold text-center mb-8 sm:mb-10">What we stand for</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
@@ -77,51 +166,8 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* The Story */}
-      <section className="border-t border-ccb-border px-4 py-12 sm:py-16">
-        <div className="max-w-2xl mx-auto">
-          <h2 className="text-lg sm:text-xl font-bold mb-6">The story</h2>
-          <div className="space-y-4 text-sm text-ccb-muted leading-relaxed">
-            <p>
-              CCB started with a simple frustration: Malawian chess players had no local platform to compete on.
-              Chess.com was great, but you couldn&apos;t deposit with mobile money or play in tournaments with
-              prizes that made sense locally.
-            </p>
-            <p>
-              So we built one. A platform where you can deposit MK 1,000 from your phone, enter a blitz tournament,
-              win, and get paid back to your phone — all without leaving WhatsApp.
-            </p>
-            <p>
-              Today, CCB runs on the crazychessbattles.live domain, supports TNM and Airtel Money, and gives
-              players the tools to not just compete, but to organize and earn from the game they love.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Numbers */}
-      <section className="border-t border-ccb-border px-4 py-12 sm:py-16 bg-ccb-primary/5">
-        <div className="max-w-3xl mx-auto text-center">
-          <h2 className="text-lg sm:text-xl font-bold mb-8">By the numbers</h2>
-          <div className="grid grid-cols-3 gap-4 sm:gap-8">
-            <div>
-              <div className="text-2xl sm:text-3xl font-bold text-ccb-primary">2+</div>
-              <div className="text-xs sm:text-sm text-ccb-muted mt-1">Mobile money operators</div>
-            </div>
-            <div>
-              <div className="text-2xl sm:text-3xl font-bold text-ccb-accent">4</div>
-              <div className="text-xs sm:text-sm text-ccb-muted mt-1">Time controls</div>
-            </div>
-            <div>
-              <div className="text-2xl sm:text-3xl font-bold text-ccb-success">10%</div>
-              <div className="text-xs sm:text-sm text-ccb-muted mt-1">Platform fee (lowest around)</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* CTA */}
-      <section className="border-t border-ccb-border py-12 sm:py-20 px-4">
+      <section className="border-t border-ccb-border py-12 sm:py-20 px-4 bg-ccb-primary/5">
         <div className="max-w-2xl mx-auto text-center">
           <Heart className="w-8 h-8 text-ccb-accent mx-auto mb-4" />
           <h2 className="text-xl sm:text-2xl font-bold mb-3">Join the community</h2>
@@ -136,7 +182,7 @@ export default function AboutPage() {
 
       {/* Footer */}
       <footer className="border-t border-ccb-border py-6 px-4">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row-reverse items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row-reverse items-center justify-between gap-3 sm:gap-4">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded bg-ccb-primary flex items-center justify-center shrink-0">
               <span className="text-white text-sm">♞</span>
