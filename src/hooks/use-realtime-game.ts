@@ -166,5 +166,42 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
     }
   }, [gameId]);
 
-  return { game, connected, error, drawOffer, makeMove, resign, checkTimeout, setGame };
+  // Draw offer / accept / decline
+  const offerDraw = useCallback(async () => {
+    try {
+      await fetch("/api/game/draw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId, action: "offer" }),
+      });
+    } catch {}
+  }, [gameId]);
+
+  const acceptDraw = useCallback(async () => {
+    try {
+      const res = await fetch("/api/game/draw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId, action: "accept" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setDrawOffer(null);
+        setGame((prev) => ({ ...prev, status: "draw", winner: null }));
+      }
+    } catch {}
+  }, [gameId]);
+
+  const declineDraw = useCallback(async () => {
+    try {
+      await fetch("/api/game/draw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId, action: "decline" }),
+      });
+    } catch {}
+    setDrawOffer(null);
+  }, [gameId]);
+
+  return { game, connected, error, drawOffer, makeMove, resign, checkTimeout, setGame, offerDraw, acceptDraw, declineDraw };
 }
