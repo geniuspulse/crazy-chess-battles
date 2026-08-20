@@ -21,8 +21,10 @@ export async function GET() {
     let referralCode = profile?.referral_code;
 
     if (!referralCode) {
-      const { data: result } = await admin.rpc("generate_referral_code", { p_user_id: user.id });
-      referralCode = result || `player-${user.id.slice(0, 6)}`;
+      referralCode = profile?.username || `player-${user.id.slice(0, 8)}`;
+      if (profile?.username) {
+        await admin.from("profiles").update({ referral_code: profile.username }).eq("id", user.id);
+      }
     }
 
     // Get referral stats
@@ -39,7 +41,7 @@ export async function GET() {
 
     return NextResponse.json({
       referralCode,
-      shareUrl: `https://crazy-chess-battles.vercel.app/?ref=${referralCode}`,
+      shareUrl: `https://crazy-chess-battles.vercel.app/signup?ref=${referralCode}`,
       rewardAmount: 1000,
       rewardKwacha: 500,
       stats: {

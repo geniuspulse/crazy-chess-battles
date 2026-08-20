@@ -54,7 +54,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const [fen, setFen] = useState(game.fen);
   const [moveHistory, setMoveHistory] = useState<string[]>([]);
   const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
-  const [viewPly, setViewPly] = useState(0); // which ply the board is showing (0 = start, moves.length = live)
+  const [viewPly, setViewPly] = useState(0);
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   const [boardTheme, setBoardTheme] = useState<BoardTheme>(getStoredBoardTheme());
@@ -83,17 +83,14 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const myTurn = (isWhite && game.turn === "white") || (isBlack && game.turn === "black");
   const gameEnded = game.status !== "playing";
 
-  // Track whether we're viewing live or a past position
   const isLiveView = viewPly === 0 || viewPly >= moveHistory.length;
 
-  // Live clock re-render tick
   useEffect(() => {
     if (gameEnded) return;
     const interval = setInterval(() => setClockTick((t) => t + 1), 1000);
     return () => clearInterval(interval);
   }, [gameEnded]);
 
-  // Poll for expired opponent clock
   useEffect(() => {
     if (gameEnded || isSpectator) return;
     const interval = setInterval(() => {
@@ -104,11 +101,9 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
 
   const myRatingChange = isWhite ? game.white_rating_change : game.black_rating_change;
 
-  // Derived: captured pieces, check square
   const captured = useMemo(() => getCapturedPieces(fen), [fen]);
   const checkSquare = useMemo(() => getCheckSquare(fen), [fen]);
 
-  // Play sounds when FEN changes (opponent moves come via realtime)
   useEffect(() => {
     if (prevFenRef.current !== game.fen && !pendingPromotion) {
       try {
@@ -128,7 +123,6 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
     prevFenRef.current = game.fen;
   }, [game.fen, pendingPromotion]);
 
-  // Play game-over sound
   useEffect(() => {
     if (gameEnded && !soundPlayedForEnd.current) {
       soundPlayedForEnd.current = true;
@@ -136,7 +130,6 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
     }
   }, [gameEnded]);
 
-  // Build move history from game PGN when FEN changes
   useEffect(() => {
     setFen(game.fen);
     lastFenRef.current = game.fen;
@@ -146,7 +139,6 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         pgnGame.loadPgn(game.pgn);
         const moves = pgnGame.history();
         setMoveHistory(moves);
-        // Auto-follow live position
         setViewPly(moves.length);
         const verbose = pgnGame.history({ verbose: true });
         const last = verbose[verbose.length - 1];
@@ -163,7 +155,6 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
     }
   }, [game.fen, game.pgn]);
 
-  // When viewPly changes (user navigating), reconstruct the FEN for that ply
   useEffect(() => {
     if (viewPly === 0 || moveHistory.length === 0) {
       if (game.pgn) {
@@ -173,11 +164,9 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
       return;
     }
     if (viewPly >= moveHistory.length) {
-      // Live position
       setFen(game.fen);
       return;
     }
-    // Reconstruct FEN at specific ply
     try {
       const tempGame = new Chess();
       for (let i = 0; i < viewPly; i++) {
@@ -249,7 +238,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
 
   const handlePieceClick = useCallback(({ square, piece }: { square: string | null; piece: { pieceType: string } | null }) => {
     if (isSpectator || !myTurn || gameEnded || !piece || !square) return;
-    if (!isLiveView) return; // Don't allow moves while reviewing
+    if (!isLiveView) return;
     const game = new Chess(fen);
     const squarePiece = game.get(square as any);
     if (!squarePiece) return;
@@ -297,7 +286,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const onDrop = useCallback(
     (sourceSquare: string, targetSquare: string): boolean => {
       if (isSpectator || gameEnded) return false;
-      if (!isLiveView) return false; // Don't allow moves while reviewing
+      if (!isLiveView) return false;
       if (myTurn) {
         if (isPromotionMove(sourceSquare, targetSquare)) {
           setPendingPromotion({ from: sourceSquare, to: targetSquare });
@@ -321,7 +310,6 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         makeMove(sourceSquare, targetSquare);
         return true;
       }
-      // Premove
       if (!targetSquare) return false;
       const game = new Chess(fen);
       const piece = game.get(sourceSquare as any);
@@ -369,25 +357,29 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
 
   const toggleSheet = (sheet: SheetType) => setActiveSheet((prev) => (prev === sheet ? null : sheet));
 
-  // Player bar component — chess.com style: avatar, name, rating, captured, clock
-  const renderPlayerBar = (data: { name: string; rating?: number | string | null; symbol: string; captured: string[]; advantage: number; clock: string; isActive: boolean }) => (
-    <div className="flex items-center justify-between max-w-[600px] mx-auto w-full px-2 py-1.5">
-      <div className="flex items-center gap-2 min-w-0">
-        <div className="w-9 h-9 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
-          <span className="text-base">{data.symbol}</span>
+  // ============ CHESS.COM-STYLE PLAYER BAR ============
+  const renderPlayerBar = (data: { name: string; rating?: number | string | null; captured: string[]; advantage: number; clock: string; isActive: boolean; symbol: string }) => (
+    <div className={`flex items-center justify-between max-w-[600px] mx-auto w-full px-2 py-2 rounded-lg transition-colors ${data.isActive ? "bg-ccb-primary/8" : ""}`}>
+      <div className="flex items-center gap-2.5 min-w-0">
+        {/* Avatar circle — chess.com style */}
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border-2 transition-colors ${data.isActive ? "border-ccb-primary bg-ccb-primary/15" : "border-ccb-border bg-ccb-surface"}`}>
+          <span className="text-lg">{data.symbol}</span>
         </div>
         <div className="flex flex-col min-w-0">
-          <span className="text-sm font-medium leading-tight truncate">{data.name}</span>
-          <div className="flex items-center gap-2">
-            {data.rating && <span className="text-xs text-ccb-muted shrink-0">{data.rating}</span>}
-            <CapturedPieces pieces={data.captured} advantage={data.advantage} perspective="top" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-semibold leading-tight truncate">{data.name}</span>
+            {data.rating != null && <span className="text-xs text-ccb-muted shrink-0">({data.rating})</span>}
           </div>
+          <CapturedPieces pieces={data.captured} advantage={data.advantage} perspective="top" />
         </div>
       </div>
-      <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-lg font-bold transition-colors shrink-0 ${
-        data.isActive ? "bg-ccb-primary/15 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
+      {/* Clock pill — chess.com style */}
+      <div className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-mono text-xl font-bold transition-all shrink-0 ${
+        data.isActive
+          ? "bg-ccb-surface text-ccb-text shadow-md ring-1 ring-ccb-primary/30"
+          : "bg-ccb-surface/60 text-ccb-muted"
       }`}>
-        <Clock className="w-4 h-4" />
+        <Clock className={`w-4 h-4 ${data.isActive ? "text-ccb-primary" : "text-ccb-muted"}`} />
         {data.clock}
       </div>
     </div>
@@ -401,10 +393,11 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         <Link href="/play" className="p-1.5 -ml-1.5 text-ccb-muted hover:text-ccb-primary">
           <ArrowLeft className="w-5 h-5" />
         </Link>
-        <span className="text-sm font-medium text-ccb-muted truncate flex items-center gap-1.5">
-          {isSpectator && <Eye className="w-3.5 h-3.5" />}
-          {game.time_control} · {game.rated ? "Ranked" : "Casual"}
-        </span>
+        <div className="flex items-center gap-2">
+          {isSpectator && <Eye className="w-3.5 h-3.5 text-ccb-muted" />}
+          <span className="text-xs font-medium px-2 py-0.5 rounded bg-ccb-surface text-ccb-muted">{game.time_control}</span>
+          <span className={`text-xs font-medium px-2 py-0.5 rounded ${game.rated ? "bg-ccb-primary/15 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"}`}>{game.rated ? "Ranked" : "Casual"}</span>
+        </div>
         <button onClick={() => toggleSheet("menu")} className="p-1.5 -mr-1.5 text-ccb-muted hover:text-ccb-primary">
           <MoreVertical className="w-5 h-5" />
         </button>
@@ -419,7 +412,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
       {/* Opponent bar */}
       {renderPlayerBar(topPlayer)}
 
-      {/* Horizontal move scroller — chess.com style, above the board */}
+      {/* Horizontal move scroller — chess.com style, between player bar and board */}
       <div className="max-w-[600px] mx-auto w-full px-2 py-1">
         {moveHistory.length >= 2 && (
           <div className="mb-1">
@@ -452,7 +445,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
             onSquareClick: handleSquareClick,
             darkSquareStyle: { backgroundColor: boardTheme.dark },
             lightSquareStyle: { backgroundColor: boardTheme.light },
-            boardStyle: { borderRadius: "8px", overflow: "hidden" },
+            boardStyle: { borderRadius: "6px", overflow: "hidden" },
           }} />
         </div>
       </div>
@@ -579,6 +572,67 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
     </div>
   );
 
+  // ============ CHESS.COM-STYLE SIDEBAR (Desktop) ============
+  const renderDesktopSidebar = () => (
+    <div className="hidden lg:flex lg:flex-col lg:w-[320px] lg:shrink-0 lg:h-full lg:py-2 gap-3">
+      <div className="flex flex-col gap-3 h-full overflow-hidden">
+        {/* Header bar */}
+        <div className="card flex items-center justify-between shrink-0 !p-3">
+          <Link href="/play" className="text-sm text-ccb-muted hover:text-ccb-primary flex items-center gap-1">
+            <ArrowLeft className="w-4 h-4" /> Back
+          </Link>
+          <div className="flex items-center gap-2">
+            {isSpectator && <span className="flex items-center gap-1 text-xs text-ccb-muted"><Eye className="w-3.5 h-3.5" />Spectating</span>}
+            <span className="text-xs font-medium px-2 py-0.5 rounded bg-ccb-surface text-ccb-muted">{game.time_control}</span>
+            <span className={`text-xs font-medium px-2 py-0.5 rounded ${game.rated ? "bg-ccb-primary/15 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"}`}>{game.rated ? "Ranked" : "Casual"}</span>
+          </div>
+        </div>
+
+        {/* Sound + theme controls */}
+        <div className="flex items-center gap-2 shrink-0 px-1">
+          <button onClick={toggleSound} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ccb-surface border border-ccb-border text-sm text-ccb-muted hover:text-ccb-text transition-colors">
+            {soundOn ? <Volume2 className="w-4 h-4 text-ccb-primary" /> : <VolumeX className="w-4 h-4" />}
+            <span>Sound</span>
+          </button>
+          <BoardThemePicker onThemeChange={setBoardTheme} />
+        </div>
+
+        {/* Tabs */}
+        <div className="flex items-center gap-1 shrink-0 px-1">
+          <button onClick={() => setDesktopTab("moves")} className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${desktopTab === "moves" ? "bg-ccb-primary/10 text-ccb-primary border border-ccb-primary/20" : "text-ccb-muted hover:text-ccb-text border border-transparent"}`}>Moves</button>
+          <button onClick={() => setDesktopTab("chat")} className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${desktopTab === "chat" ? "bg-ccb-primary/10 text-ccb-primary border border-ccb-primary/20" : "text-ccb-muted hover:text-ccb-text border border-transparent"}`}>Chat</button>
+        </div>
+
+        {/* Tab content */}
+        {desktopTab === "moves" ? (
+          <>
+            <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar rounded-lg bg-ccb-card border border-ccb-border p-2">
+              <div className="space-y-0.5">
+                {moveHistory.length === 0 && <p className="text-xs text-ccb-muted text-center py-4">No moves yet</p>}
+                {Array.from({ length: Math.ceil(moveHistory.length / 2) }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-1 text-sm rounded-md hover:bg-ccb-surface/50 px-1 py-0.5 transition-colors">
+                    <span className="text-ccb-muted text-xs font-mono w-7 text-right shrink-0">{i + 1}.</span>
+                    <button onClick={() => setViewPly(i * 2 + 1)} className={`font-mono flex-1 text-left rounded px-2 py-0.5 transition-colors ${viewPly === i * 2 + 1 ? "bg-ccb-primary text-white" : "text-ccb-text hover:bg-ccb-surface"}`}>{moveHistory[i * 2] || ""}</button>
+                    {moveHistory[i * 2 + 1] && (
+                      <button onClick={() => setViewPly(i * 2 + 2)} className={`font-mono flex-1 text-left rounded px-2 py-0.5 transition-colors ${viewPly === i * 2 + 2 ? "bg-ccb-primary text-white" : "text-ccb-text hover:bg-ccb-surface"}`}>{moveHistory[i * 2 + 1]}</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="text-center text-xs text-ccb-muted shrink-0 py-1">
+              Move {game.move_count} · {game.time_control}
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 min-h-0 flex flex-col rounded-lg border border-ccb-border overflow-hidden">
+            <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   // ============ SPECTATOR VIEW ============
   if (isSpectator) {
     const topPlayer = { name: blackName, rating: game.black_rating, captured: captured.black, advantage: -captured.advantage, clock: getLiveClock("black"), isActive: game.turn === "black" && !gameEnded, symbol: "♚" };
@@ -586,52 +640,9 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
 
     return (
       <>
-        <div className="game-viewport -my-4 sm:-my-6 flex flex-col lg:flex-row lg:items-center lg:justify-center lg:gap-6">
+        <div className="game-viewport -my-4 sm:-my-6 flex flex-col lg:flex-row lg:items-center lg:justify-center lg:gap-4">
           {boardColumn(topPlayer, bottomPlayer, false)}
-
-          {/* Desktop-only sidebar */}
-          <div className="hidden lg:flex lg:flex-col lg:w-[280px] lg:shrink-0 lg:h-full lg:py-2 gap-3">
-            <div className="flex flex-col gap-3 h-full overflow-y-auto no-scrollbar">
-              <div className="card flex items-center justify-between shrink-0">
-                <Link href="/play" className="text-sm text-ccb-muted hover:text-ccb-primary flex items-center gap-1">
-                  <ArrowLeft className="w-4 h-4" /> Back
-                </Link>
-                <div className="flex items-center gap-2">
-                  <button onClick={toggleSound} className="text-ccb-muted hover:text-ccb-primary transition-colors p-1">
-                    {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-                  </button>
-                  <div className="flex items-center gap-2 text-sm text-ccb-muted">
-                    <Eye className="w-4 h-4" /><span>Spectating</span>
-                  </div>
-                  <BoardThemePicker onThemeChange={setBoardTheme} />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1 shrink-0">
-                <button onClick={() => setDesktopTab("moves")} className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${desktopTab === "moves" ? "bg-ccb-primary/10 text-ccb-primary" : "text-ccb-muted hover:text-ccb-text"}`}>Moves</button>
-                <button onClick={() => setDesktopTab("chat")} className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${desktopTab === "chat" ? "bg-ccb-primary/10 text-ccb-primary" : "text-ccb-muted hover:text-ccb-text"}`}>Chat</button>
-              </div>
-
-              {desktopTab === "moves" ? (
-                <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar">
-                  <div className="space-y-0.5">
-                    {moveHistory.length === 0 ? <p className="text-xs text-ccb-muted text-center py-4">No moves yet</p> : null}
-                    {Array.from({ length: Math.ceil(moveHistory.length / 2) }).map((_, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm rounded-md hover:bg-ccb-surface/50 px-1 py-0.5">
-                        <span className="text-ccb-muted text-xs font-mono w-6 text-right shrink-0">{i + 1}.</span>
-                        <button onClick={() => setViewPly(i * 2 + 1)} className={`font-mono flex-1 text-left rounded px-1 ${viewPly === i * 2 + 1 ? "bg-ccb-primary text-white" : "text-ccb-text"}`}>{moveHistory[i * 2] || ""}</button>
-                        <button onClick={() => setViewPly(i * 2 + 2)} className={`font-mono flex-1 text-left rounded px-1 ${viewPly === i * 2 + 2 ? "bg-ccb-primary text-white" : "text-ccb-text"}`}>{moveHistory[i * 2 + 1] || ""}</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="flex-1 min-h-0 flex flex-col rounded-lg border border-ccb-border overflow-hidden">
-                  <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} />
-                </div>
-              )}
-            </div>
-          </div>
+          {renderDesktopSidebar()}
         </div>
 
         <PromotionDialog visible={!!pendingPromotion} color={isWhite ? "white" : "black"} onSelect={handlePromotionSelect} onCancel={() => setPendingPromotion(null)} />
@@ -660,61 +671,9 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
 
   return (
     <>
-      <div className="game-viewport -my-4 sm:-my-6 flex flex-col lg:flex-row lg:items-center lg:justify-center lg:gap-6">
+      <div className="game-viewport -my-4 sm:-my-6 flex flex-col lg:flex-row lg:items-center lg:justify-center lg:gap-4">
         {boardColumn(playerData, myData, true)}
-
-        {/* Desktop-only sidebar */}
-        <div className="hidden lg:flex lg:flex-col lg:w-[280px] lg:shrink-0 lg:h-full lg:py-2 gap-3">
-          <div className="flex flex-col gap-3 h-full overflow-y-auto no-scrollbar">
-            <div className="card flex items-center justify-between shrink-0">
-              <Link href="/play" className="text-sm text-ccb-muted hover:text-ccb-primary flex items-center gap-1">
-                <ArrowLeft className="w-4 h-4" /> Back
-              </Link>
-              <div className="flex items-center gap-2">
-                <button onClick={toggleSound} className="text-ccb-muted hover:text-ccb-primary transition-colors p-1">
-                  {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-                </button>
-                <BoardThemePicker onThemeChange={setBoardTheme} />
-              </div>
-            </div>
-            <div className="card flex items-center justify-between shrink-0">
-              <div className="text-xs text-ccb-muted">
-                {game.time_control} · {game.rated ? "Ranked" : "Casual"}
-              </div>
-            </div>
-
-            {moveHistory.length >= 2 && <div className="shrink-0"><OpeningBadge moves={moveHistory} /></div>}
-
-            <div className="flex items-center gap-1 shrink-0">
-              <button onClick={() => setDesktopTab("moves")} className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${desktopTab === "moves" ? "bg-ccb-primary/10 text-ccb-primary" : "text-ccb-muted hover:text-ccb-text"}`}>Moves</button>
-              <button onClick={() => setDesktopTab("chat")} className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${desktopTab === "chat" ? "bg-ccb-primary/10 text-ccb-primary" : "text-ccb-muted hover:text-ccb-text"}`}>Chat</button>
-            </div>
-
-            {desktopTab === "moves" ? (
-              <>
-                <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar">
-                  <div className="space-y-0.5">
-                    {moveHistory.length === 0 ? <p className="text-xs text-ccb-muted text-center py-4">No moves yet</p> : null}
-                    {Array.from({ length: Math.ceil(moveHistory.length / 2) }).map((_, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm rounded-md hover:bg-ccb-surface/50 px-1 py-0.5">
-                        <span className="text-ccb-muted text-xs font-mono w-6 text-right shrink-0">{i + 1}.</span>
-                        <button onClick={() => setViewPly(i * 2 + 1)} className={`font-mono flex-1 text-left rounded px-1 ${viewPly === i * 2 + 1 ? "bg-ccb-primary text-white" : "text-ccb-text"}`}>{moveHistory[i * 2] || ""}</button>
-                        <button onClick={() => setViewPly(i * 2 + 2)} className={`font-mono flex-1 text-left rounded px-1 ${viewPly === i * 2 + 2 ? "bg-ccb-primary text-white" : "text-ccb-text"}`}>{moveHistory[i * 2 + 1] || ""}</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="text-center text-xs text-ccb-muted shrink-0">
-                  Move {game.move_count} · {game.time_control}
-                </div>
-              </>
-            ) : (
-              <div className="flex-1 min-h-0 flex flex-col rounded-lg border border-ccb-border overflow-hidden">
-                <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} />
-              </div>
-            )}
-          </div>
-        </div>
+        {renderDesktopSidebar()}
       </div>
 
       <PromotionDialog visible={!!pendingPromotion} color={isWhite ? "white" : "black"} onSelect={handlePromotionSelect} onCancel={() => setPendingPromotion(null)} />
