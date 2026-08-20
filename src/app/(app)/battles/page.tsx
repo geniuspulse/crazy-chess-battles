@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   Swords, Clock, Coins, Zap, AlertCircle, Loader2, Link2, Copy, Check,
-  RefreshCw, XCircle, ChevronRight, Users, Target, Sparkles, Bot,
+  RefreshCw, XCircle, ChevronRight, Users, Target, Sparkles,
 } from "lucide-react";
 
 const DEFAULT_STAKES = [50000, 100000, 250000, 500000, 1000000];
@@ -32,7 +32,7 @@ interface BattleConfig {
   increment_seconds: number;
 }
 
-type Mode = "menu" | "quickbattle" | "challenge" | "browse";
+type Mode = "menu" | "quickbattle" | "challenge";
 type BattleState = "select" | "searching" | "matched" | "playing";
 
 export default function BattlesPage() {
@@ -643,18 +643,9 @@ export default function BattlesPage() {
           {creatingChallenge ? "Creating..." : "Create Challenge Link"}
         </button>
 
-        <div className="text-center">
-          <button onClick={() => setMode("browse")} className="text-sm text-ccb-primary hover:underline">
-            Browse open battle challenges →
-          </button>
-        </div>
+
       </div>
     );
-  }
-
-  // ===== Mode: Browse Battle Challenges =====
-  if (mode === "browse") {
-    return <BrowseBattleChallenges onBack={() => setMode("menu")} router={router} supabase={supabase} myRating={myRating} balance={balance} feePct={feePct} />;
   }
 
   // ===== Main mode menu =====
@@ -715,25 +706,6 @@ export default function BattlesPage() {
           </div>
         </button>
 
-        {/* Browse Challenges */}
-        <button onClick={() => setMode("browse")}
-          className="group relative overflow-hidden rounded-2xl border border-ccb-border bg-ccb-card p-6 text-left transition-all hover:border-ccb-success/50 hover:shadow-xl hover:shadow-ccb-success/5">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-ccb-success to-emerald-700 flex items-center justify-center shrink-0">
-              <Users className="w-7 h-7 text-white" />
-            </div>
-            <div className="flex-1">
-              <h2 className="text-lg font-bold flex items-center gap-2">
-                Browse Challenges
-                <span className="badge bg-ccb-success/15 text-ccb-success text-[10px] px-2 py-0.5">OPEN</span>
-              </h2>
-              <p className="text-sm text-ccb-muted mt-0.5">
-                See open battle challenges from other players. Accept one and start playing immediately.
-              </p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-ccb-muted group-hover:text-ccb-success transition-colors shrink-0" />
-          </div>
-        </button>
       </div>
 
       {/* How it works */}
@@ -753,205 +725,3 @@ export default function BattlesPage() {
 }
 
 // ===== Browse Battle Challenges component =====
-function BrowseBattleChallenges({
-  onBack, router, supabase, myRating, balance, feePct,
-}: {
-  onBack: () => void;
-  router: ReturnType<typeof useRouter>;
-  supabase: ReturnType<typeof createClient>;
-  myRating: number;
-  balance: number;
-  feePct: number;
-}) {
-  const [challenges, setChallenges] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [accepting, setAccepting] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
-  const fetchChallenges = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) setCurrentUserId(user.id);
-
-      const { data, error: fetchErr } = await supabase
-        .from("battle_challenges")
-        .select("id, stake_cents, created_at, challenger_id")
-        .eq("status", "pending")
-        .order("created_at", { ascending: false })
-        .limit(30);
-
-      if (fetchErr) throw fetchErr;
-      if (!data || data.length === 0) { setChallenges([]); setLoading(false); return; }
-
-      const challengerIds = [...new Set(data.map((c: any) => c.challenger_id))];
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, username, display_name, rating")
-        .in("id", challengerIds);
-
-      const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
-
-      const enriched = data
-        .filter((c: any) => c.challenger_id !== user?.id)
-        .map((c: any) => ({
-          id: c.id,
-          stake_cents: c.stake_cents,
-          created_at: c.created_at,
-          challenger: {
-            username: profileMap.get(c.challenger_id)?.username || "Unknown",
-            display_name: profileMap.get(c.challenger_id)?.display_name || "Player",
-            rating: profileMap.get(c.challenger_id)?.rating || 1200,
-          },
-        }));
-
-      setChallenges(enriched);
-    } catch (e: any) { setError(e.message || "Failed to load challenges"); }
-    setLoading(false);
-  }, [supabase]);
-
-  useEffect(() => {
-    fetchChallenges();
-    const channel = supabase
-      .channel("battle-challenges-list")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "battle_challenges" }, () => fetchChallenges())
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "battle_challenges" }, () => fetchChallenges())
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [fetchChallenges, supabase]);
-
-  const handleAccept = async (challengeId: string, stakeCents: number) => {
-    if (balance < stakeCents) {
-      setError(`Insufficient balance. You need ${formatMKK(stakeCents)}. Deposit first.`);
-      return;
-    }
-    setAccepting(challengeId);
-    setError(null);
-    try {
-      const res = await fetch("/api/battles/challenge/accept", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ challengeId }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "Failed to accept");
-
-      // Start the battle game
-      const startRes = await fetch("/api/battles/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ battleId: data.battleId }),
-      });
-      const startData = await startRes.json();
-      if (!startRes.ok || !startData.gameId) {
-        // Retry once
-        await new Promise((r) => setTimeout(r, 1200));
-        const retryRes = await fetch("/api/battles/start", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ battleId: data.battleId }),
-        });
-        const retryData = await retryRes.json();
-        if (!retryRes.ok || !retryData.gameId) throw new Error("Battle accepted but game failed to start. Try again from your active battles.");
-        router.push(`/game/${retryData.gameId}`);
-        return;
-      }
-      router.push(`/game/${startData.gameId}`);
-    } catch (e: any) { setError(e.message); setAccepting(null); }
-  };
-
-  const formatTimeAgo = (dateStr: string) => {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return "just now";
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
-  };
-
-  const getRatingColor = (rating: number) => {
-    if (rating >= 1900) return "text-cyan-400";
-    if (rating >= 1600) return "text-emerald-400";
-    if (rating >= 1300) return "text-ccb-accent";
-    if (rating >= 1000) return "text-ccb-silver";
-    return "text-ccb-muted";
-  };
-
-  return (
-    <div className="max-w-3xl mx-auto space-y-5 pb-20 sm:pb-0 animate-slide-up">
-      <button onClick={onBack} className="text-sm text-ccb-muted hover:text-ccb-text flex items-center gap-1">
-        <ChevronRight className="w-4 h-4 rotate-180" /> Back
-      </button>
-
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
-          <Users className="w-6 h-6 text-ccb-success" /> Open Battle Challenges
-        </h1>
-        <p className="text-sm text-ccb-muted mt-1">Accept a challenge and play for the pot</p>
-      </div>
-
-      {error && (
-        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{error}</div>
-      )}
-
-      {loading && challenges.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20">
-          <Loader2 className="w-8 h-8 text-ccb-primary animate-spin" />
-          <p className="text-sm text-ccb-muted mt-3">Loading challenges...</p>
-        </div>
-      )}
-
-      {!loading && challenges.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-16 h-16 rounded-full bg-ccb-primary/10 flex items-center justify-center mb-4">
-            <Swords className="w-8 h-8 text-ccb-muted" />
-          </div>
-          <h2 className="text-lg font-bold mb-1">No open challenges</h2>
-          <p className="text-sm text-ccb-muted max-w-xs">Nobody has an open battle challenge right now. Create one and share it!</p>
-        </div>
-      )}
-
-      {challenges.length > 0 && (
-        <div className="grid gap-3">
-          {challenges.map((c) => {
-            const payout = c.stake_cents * 2 - Math.round(c.stake_cents * 2 * (feePct / 100));
-            const canAfford = balance >= c.stake_cents;
-            return (
-              <div key={c.id} className="group rounded-xl border border-ccb-border bg-ccb-card p-4 transition-all hover:border-ccb-primary/40 hover:shadow-lg hover:shadow-ccb-primary/5">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
-                      <span className="text-sm font-bold text-ccb-primary">
-                        {c.challenger.display_name?.[0]?.toUpperCase() || "?"}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium truncate">{c.challenger.display_name || c.challenger.username}</span>
-                        <span className={`text-xs font-bold shrink-0 ${getRatingColor(c.challenger.rating)}`}>{c.challenger.rating}</span>
-                      </div>
-                      <div className="flex items-center gap-x-1.5 gap-y-0.5 mt-1 text-xs text-ccb-muted flex-wrap">
-                        <span className="flex items-center gap-1 whitespace-nowrap"><Coins className="w-3.5 h-3.5 shrink-0" />{formatMKK(c.stake_cents)}</span>
-                        <span className="text-ccb-border">•</span>
-                        <span className="whitespace-nowrap">Win {formatMKK(payout)}</span>
-                        <span className="text-ccb-border">•</span>
-                        <span className="whitespace-nowrap">{formatTimeAgo(c.created_at)}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <button onClick={() => handleAccept(c.id, c.stake_cents)} disabled={accepting === c.id || !canAfford}
-                    className={`btn-primary w-full sm:w-auto px-5 py-2.5 shrink-0 ${!canAfford ? "opacity-50 cursor-not-allowed" : ""}`}>
-                    {accepting === c.id ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : <><Swords className="w-4 h-4 mr-1.5" /> Accept</>}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}

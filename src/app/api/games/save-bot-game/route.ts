@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { awardBotGameBerries } from "@/lib/berry/award";
 
 // Bot user ID (chessbot@ccb.internal — created via admin API)
 const BOT_USER_ID = "3699502b-57bf-498a-bc2d-11385fd9d317";
@@ -98,7 +99,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to save game" }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, gameId: game.id });
+    // Award berries if the player won
+    let berriesAwarded = 0;
+    if (winner && winner !== null) {
+      const playerWon = (playerColor === "white" && winner === "white") || (playerColor === "black" && winner === "black");
+      if (playerWon) {
+        berriesAwarded = await awardBotGameBerries(game.id, userId, difficulty);
+      }
+    }
+
+    return NextResponse.json({ success: true, gameId: game.id, berriesAwarded });
   } catch (err) {
     console.error("Save bot game error:", err);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
