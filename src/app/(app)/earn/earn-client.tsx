@@ -1,11 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Cherry, Flame, Share2, MessageCircle, Gamepad2, User, Check, Loader2, Gift, Copy, Users, Trophy, Coins, Wallet } from "lucide-react";
 
 interface Props {
   berryBalance: number;
   userId: string;
+  hasPlayedGame: boolean;
+  profileComplete: boolean;
+  initialClaimedActions: string[];
 }
 
 interface RewardTask {
@@ -19,11 +23,15 @@ interface RewardTask {
   claimable: boolean;
   claimed?: boolean;
   loading?: boolean;
+  requirementMet?: boolean;
+  ctaLabel?: string;
+  onCta?: () => void;
 }
 
-export default function EarnClient({ berryBalance, userId }: Props) {
+export default function EarnClient({ berryBalance, userId, hasPlayedGame, profileComplete, initialClaimedActions }: Props) {
+  const router = useRouter();
   const [checkinStatus, setCheckinStatus] = useState({ checkedInToday: false, currentStreak: 0 });
-  const [claimedActions, setClaimedActions] = useState<Set<string>>(new Set());
+  const [claimedActions, setClaimedActions] = useState<Set<string>>(new Set(initialClaimedActions));
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [messages, setMessages] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [referralCode, setReferralCode] = useState("");
@@ -129,6 +137,25 @@ export default function EarnClient({ berryBalance, userId }: Props) {
     await handleClaim("whatsapp_status");
   };
 
+  // "Share the App" — trigger the actual share action first, then claim.
+  // Uses the native Web Share sheet where available, otherwise falls back to WhatsApp.
+  const handleShareApp = async () => {
+    const shareUrl = `https://crazy-chess-battles.vercel.app/?ref=${referralCode}`;
+    const shareText = `🏆 I'm playing chess on Crazy Chess Battles! Join me and earn CCB berries → ${shareUrl}`;
+
+    try {
+      if (typeof navigator !== "undefined" && (navigator as any).share) {
+        await (navigator as any).share({ title: "Crazy Chess Battles", text: shareText, url: shareUrl });
+      } else {
+        window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, "_blank");
+      }
+    } catch {
+      // User cancelled the share sheet — don't claim the reward.
+      return;
+    }
+    await handleClaim("share_app");
+  };
+
   const tasks: RewardTask[] = [
     {
       id: "daily",
@@ -149,6 +176,9 @@ export default function EarnClient({ berryBalance, userId }: Props) {
       action: "share_app",
       claimable: !claimedActions.has("share_app"),
       claimed: claimedActions.has("share_app"),
+      requirementMet: true, // sharing IS the action — Claim triggers the share sheet
+      ctaLabel: "Share",
+      onCta: handleShareApp,
     },
     {
       id: "whatsapp_status",
@@ -160,28 +190,41 @@ export default function EarnClient({ berryBalance, userId }: Props) {
       action: "whatsapp_status",
       claimable: !claimedActions.has("whatsapp_status"),
       claimed: claimedActions.has("whatsapp_status"),
+      requirementMet: true, // posting IS the action — Claim opens WhatsApp
+      ctaLabel: "Post",
+      onCta: handleWhatsAppStatus,
     },
     {
       id: "first_game",
       icon: Gamepad2,
       title: "Play Your First Game",
-      desc: "Complete your first ever chess game on CCB",
+      desc: hasPlayedGame
+        ? "Complete your first ever chess game on CCB"
+        : "You haven't played a game yet — tap to jump into Play and finish one",
       berries: config.berry_first_game || 10,
       type: "one-time",
       action: "first_game",
       claimable: !claimedActions.has("first_game"),
       claimed: claimedActions.has("first_game"),
+      requirementMet: hasPlayedGame,
+      ctaLabel: hasPlayedGame ? "Claim" : "Play Now",
+      onCta: hasPlayedGame ? () => handleClaim("first_game") : () => router.push("/play"),
     },
     {
       id: "profile_complete",
       icon: User,
       title: "Complete Your Profile",
-      desc: "Add a username, display name, and avatar to your profile",
+      desc: profileComplete
+        ? "Add a username, display name, and avatar to your profile"
+        : "Your profile is missing a username, display name, or avatar — tap to finish it",
       berries: config.berry_profile_complete || 5,
       type: "one-time",
       action: "profile_complete",
       claimable: !claimedActions.has("profile_complete"),
       claimed: claimedActions.has("profile_complete"),
+      requirementMet: profileComplete,
+      ctaLabel: profileComplete ? "Claim" : "Complete Profile",
+      onCta: profileComplete ? () => handleClaim("profile_complete") : () => router.push("/settings"),
     },
   ];
 
@@ -367,13 +410,18 @@ export default function EarnClient({ berryBalance, userId }: Props) {
         <h3 className="text-sm font-medium text-ccb-muted px-1">One-time Rewards</h3>
         {tasks.filter(t => t.type === "one-time").map((task) => {
           const Icon = task.icon;
+          const needsAction = task.requirementMet === false && !task.claimed;
           return (
             <div key={task.id} className="card p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                  task.claimed ? "bg-green-500/10" : "bg-ccb-primary/10"
+                  task.claimed ? "bg-green-500/10" : needsAction ? "bg-orange-500/10" : "bg-ccb-primary/10"
                 }`}>
-                  {task.claimed ? <Check className="w-5 h-5 text-green-500" /> : <Icon className="w-5 h-5 text-ccb-primary" />}
+                  {task.claimed ? (
+                    <Check className="w-5 h-5 text-green-500" />
+                  ) : (
+                    <Icon className={`w-5 h-5 ${needsAction ? "text-orange-500" : "text-ccb-primary"}`} />
+                  )}
                 </div>
                 <div>
                   <p className="font-medium text-sm">{task.title}</p>
@@ -384,11 +432,15 @@ export default function EarnClient({ berryBalance, userId }: Props) {
                 <span className="text-sm font-bold text-red-500">+{task.berries} 🍒</span>
                 {task.claimable && !task.claimed && task.action && (
                   <button
-                    onClick={() => handleClaim(task.action!)}
+                    onClick={() => task.onCta?.()}
                     disabled={loading[task.action!]}
-                    className="px-3 py-1.5 rounded-lg bg-ccb-primary text-white text-xs font-medium hover:bg-ccb-primary/90 disabled:opacity-50"
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 ${
+                      needsAction
+                        ? "bg-orange-500 text-white hover:bg-orange-600"
+                        : "bg-ccb-primary text-white hover:bg-ccb-primary/90"
+                    }`}
                   >
-                    {loading[task.action!] ? <Loader2 className="w-3 h-3 animate-spin" /> : "Claim"}
+                    {loading[task.action!] ? <Loader2 className="w-3 h-3 animate-spin" /> : (task.ctaLabel || "Claim")}
                   </button>
                 )}
               </div>
@@ -396,24 +448,6 @@ export default function EarnClient({ berryBalance, userId }: Props) {
           );
         })}
       </div>
-
-      {/* WhatsApp status */}
-      <button
-        onClick={handleWhatsAppStatus}
-        disabled={claimedActions.has("whatsapp_status")}
-        className="w-full card p-4 flex items-center justify-between hover:bg-ccb-surface/50 disabled:opacity-50"
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center">
-            <MessageCircle className="w-5 h-5 text-green-500" />
-          </div>
-          <div className="text-left">
-            <p className="font-medium text-sm">Post WhatsApp Status</p>
-            <p className="text-xs text-ccb-muted">+{config.berry_whatsapp_status || 20} 🍒 for posting about CCB</p>
-          </div>
-        </div>
-        {!claimedActions.has("whatsapp_status") && <span className="text-xs text-ccb-primary font-medium">Open →</span>}
-      </button>
     </div>
   );
 }
