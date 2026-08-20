@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         challengeId: retryChallenge.id,
         timeControl,
-        url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-github.vercel.app"}/battle-challenge/${retryChallenge.id}`,
+        url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://crazychessbattles.live"}/battle-challenge/${retryChallenge.id}`,
       });
     }
 
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       challengeId: challenge.id,
       timeControl,
-      url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-github.vercel.app"}/battle-challenge/${challenge.id}`,
+      url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://crazychessbattles.live"}/battle-challenge/${challenge.id}`,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Server error" }, { status: 500 });

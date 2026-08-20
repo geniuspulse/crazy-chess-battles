@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       challengeId: challenge.id,
-      url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-github.vercel.app"}/challenge/${challenge.id}`,
+      url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://crazychessbattles.live"}/challenge/${challenge.id}`,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Server error" }, { status: 500 });

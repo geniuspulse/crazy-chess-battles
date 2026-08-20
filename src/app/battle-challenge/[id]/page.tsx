@@ -63,7 +63,7 @@ export default async function BattleChallengePage({
 
   // Challenger revisiting their own link → waiting screen
   if (challenge.challenger_id === user.id) {
-    const url = `${process.env.NEXT_PUBLIC_SITE_URL || "https://ccb-github.vercel.app"}/battle-challenge/${id}`;
+    const url = `${process.env.NEXT_PUBLIC_SITE_URL || "https://crazychessbattles.live"}/battle-challenge/${id}`;
     return (
       <BattleChallengeWaiting
         challengeId={id}
