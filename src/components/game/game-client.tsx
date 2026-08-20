@@ -49,8 +49,7 @@ function formatClock(ms: number | null): string {
 }
 
 export default function GameClient({ gameId, initialGame, currentUserId, isSpectator = false, whiteName = "White", blackName = "Black" }: GameClientProps) {
-  const { game, connected, error, drawOffer, makeMove, resign, checkTimeout, setGame, offerDraw, acceptDraw, declineDraw } = useRealtimeGame(gameId, initialGame);
-  const [chess] = useState(() => new Chess(game.fen));
+  const { game, connected, drawOffer, makeMove, resign, checkTimeout, offerDraw, acceptDraw, declineDraw } = useRealtimeGame(gameId, initialGame);
   const [fen, setFen] = useState(game.fen);
   const [moveHistory, setMoveHistory] = useState<string[]>([]);
   const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
@@ -350,6 +349,28 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
     setSoundOn(newVal);
     setSoundEnabled(newVal);
   };
+
+  // Auto-execute premove when it becomes our turn
+  useEffect(() => {
+    if (myTurn && premove && !gameEnded) {
+      try {
+        const game = new Chess(fen);
+        const move = game.move({ from: premove.from, to: premove.to, promotion: "q" });
+        if (move !== null) {
+          if (isPromotionMove(premove.from, premove.to)) {
+            setPendingPromotion({ from: premove.from, to: premove.to });
+          } else {
+            setFen(game.fen());
+            setMoveHistory(game.history());
+            setLastMove({ from: premove.from, to: premove.to });
+            playSound(detectMoveSound(move));
+            makeMove(premove.from, premove.to);
+          }
+        }
+      } catch {}
+      setPremove(null);
+    }
+  }, [myTurn, premove, fen, gameEnded, isPromotionMove, makeMove]);
 
   useEffect(() => {
     playSound("gameStart");
