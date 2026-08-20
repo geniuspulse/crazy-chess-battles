@@ -12,18 +12,14 @@ export default async function WalletPage() {
     redirect("/login?redirect=/wallet");
   }
 
-  // Only select columns that actually exist on the profiles table.
-  // email comes from auth.users (user.email), not profiles.
-  const { data: profile, error: profileError } = await supabase
+  // Use select("*") — PostgREST caches schema and may not know about
+  // recently added columns like berry_balance. select("*") returns all
+  // columns PostGREST knows about without validating individual names.
+  const { data: profile } = await supabase
     .from("profiles")
-    .select("wallet_balance_cents, berry_balance, username, display_name")
+    .select("*")
     .eq("id", user.id)
     .single();
-
-  // TEMP DEBUG — remove after fixing
-  console.log("[WALLET DEBUG] user.id:", user.id);
-  console.log("[WALLET DEBUG] profile:", JSON.stringify(profile));
-  console.log("[WALLET DEBUG] profileError:", JSON.stringify(profileError));
 
   // Gracefully handle missing deposits table — don't crash the whole page
   let deposits: any[] = [];
@@ -41,17 +37,12 @@ export default async function WalletPage() {
   }
 
   return (
-    <>
-      <div style={{ position: "fixed", top: 0, right: 0, zIndex: 9999, background: "red", color: "white", padding: "8px", fontSize: "12px", maxWidth: "400px" }}>
-        DEBUG: uid={user.id?.substring(0, 8)} | profile={profile ? "yes" : "null"} | err={profileError?.message || "none"} | bal={profile?.wallet_balance_cents ?? "n/a"}
-      </div>
-      <WalletClient
-        balanceCents={profile?.wallet_balance_cents || 0}
-        berryBalance={profile?.berry_balance || 0}
-        email={user.email || ""}
-        deposits={deposits}
-        phone={null}
-      />
-    </>
+    <WalletClient
+      balanceCents={profile?.wallet_balance_cents || 0}
+      berryBalance={profile?.berry_balance || 0}
+      email={user.email || ""}
+      deposits={deposits}
+      phone={null}
+    />
   );
 }
