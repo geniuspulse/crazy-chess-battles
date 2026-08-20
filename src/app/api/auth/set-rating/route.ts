@@ -22,9 +22,16 @@ export async function POST(req: NextRequest) {
     }
 
     const chessLevel = bodyLevel || userData.user.user_metadata?.chess_level || "beginner";
-    const targetRating = LEVEL_RATINGS[chessLevel] || 400;
+    
+    // Use chess.com rating if provided, otherwise fall back to level
+    const targetRating = chesscomRating && chesscomRating > 0
+      ? Math.round(chesscomRating)
+      : LEVEL_RATINGS[chessLevel] || 400;
 
     const updateData: Record<string, any> = { rating: targetRating };
+    if (chesscomUsername) {
+      updateData.chesscom_username = chesscomUsername;
+    }
 
     const { error: updateError } = await supabase
       .from("profiles")
@@ -36,7 +43,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to set rating" }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, rating: targetRating, chessLevel });
+    return NextResponse.json({ 
+      success: true, 
+      rating: targetRating, 
+      source: chesscomRating ? "chesscom" : "level", 
+      chessLevel 
+    });
   } catch (err) {
     console.error("Set rating error:", err);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
