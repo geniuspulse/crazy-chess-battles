@@ -36,7 +36,7 @@ export default function CreateTournamentPage() {
   const [entryFeeMwk, setEntryFeeMwk] = useState('1000');
   const [minPlayers, setMinPlayers] = useState('4');
   const [maxPlayers, setMaxPlayers] = useState('16');
-  const [creatorProfitPercent, setCreatorProfitPercent] = useState('50');
+  const [creatorProfitPercent, setCreatorProfitPercent] = useState('40');
   const [rounds, setRounds] = useState('5');
   const [durationMinutes, setDurationMinutes] = useState('60');
 
