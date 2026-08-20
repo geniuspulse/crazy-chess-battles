@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     // Find upcoming tournaments whose start time has passed
     const { data: tournaments } = await admin
       .from("tournaments")
-      .select("id, name, starts_at, status, type, initial_minutes, increment_seconds, time_control")
+      .select("id, name, starts_at, status, type, initial_minutes, increment_seconds, time_control, min_players, entry_fee_cents")
       .eq("status", "upcoming")
       .lte("starts_at", now);
 
@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
     }
 
     let started = 0;
+    let cancelled = 0;
     const errors: string[] = [];
 
     for (const tournament of tournaments) {
@@ -29,41 +30,56 @@ export async function POST(req: NextRequest) {
         // Fetch participants
         const { data: participants } = await admin
           .from("tournament_participants")
-          .select("player_id, score")
+          .select("player_id, score, paid_entry_fee")
           .eq("tournament_id", tournament.id);
 
-        if (!participants || participants.length < 2) {
-          // Not enough players — mark as cancelled
+        const minRequired = tournament.min_players || 2;
+
+        // Check if minimum players is met
+        if (!participants || participants.length < minRequired) {
+          // Not enough players — cancel and refund
           await admin
             .from("tournaments")
             .update({ status: "cancelled", ended_at: now })
             .eq("id", tournament.id);
 
-          // Refund any entry fees
-          const { data: paid } = await admin
-            .from("tournament_participants")
-            .select("player_id, paid_entry_fee")
-            .eq("tournament_id", tournament.id)
-            .eq("paid_entry_fee", true);
-
-          if (paid) {
-            const { data: t } = await admin
-              .from("tournaments")
-              .select("entry_fee_cents")
-              .eq("id", tournament.id)
-              .single();
-
-            if (t?.entry_fee_cents) {
-              for (const p of paid) {
+          // Refund entry fees to all paid participants
+          if (tournament.entry_fee_cents && tournament.entry_fee_cents > 0) {
+            for (const p of participants || []) {
+              if (p.paid_entry_fee) {
                 await admin.rpc("credit_wallet", {
                   p_user_id: p.player_id,
-                  p_amount_cents: t.entry_fee_cents,
+                  p_amount_cents: tournament.entry_fee_cents,
+                });
+
+                // Record refund for audit trail
+                await admin.from("deposits").insert({
+                  user_id: p.player_id,
+                  amount_cents: tournament.entry_fee_cents,
+                  status: "success",
+                  method: "tournament_refund",
+                  reference: `tournament:${tournament.id}:refund:min_players_not_met`,
                 });
               }
             }
           }
 
-          errors.push(`${tournament.name}: cancelled (not enough players)`);
+          // Notify all participants
+          for (const p of participants || []) {
+            try {
+              await admin.from("notifications").insert({
+                user_id: p.player_id,
+                type: "tournament_cancelled",
+                title: `${tournament.name} was cancelled`,
+                body: `The tournament didn't meet the minimum of ${minRequired} players. ${tournament.entry_fee_cents > 0 ? "Your entry fee has been refunded." : ""}`,
+                data: { tournamentName: tournament.name, tournamentId: tournament.id },
+                read: false,
+              });
+            } catch {}
+          }
+
+          cancelled++;
+          errors.push(`${tournament.name}: cancelled (only ${participants?.length || 0}/${minRequired} players)`);
           continue;
         }
 
@@ -162,7 +178,7 @@ export async function POST(req: NextRequest) {
           .update({ status: "active", current_round: 1 })
           .eq("id", tournament.id);
 
-        // Notify all participants directly (no self-HTTP fetch)
+        // Notify all participants
         for (const p of participants) {
           try {
             await admin.from("notifications").insert({
@@ -182,7 +198,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ checked: tournaments.length, started, errors });
+    return NextResponse.json({ checked: tournaments.length, started, cancelled, errors });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Auto-start failed" }, { status: 500 });
   }

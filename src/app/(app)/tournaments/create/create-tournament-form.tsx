@@ -14,6 +14,8 @@ import {
   Loader2,
   Calendar,
   Zap,
+  TrendingUp,
+  Percent,
 } from 'lucide-react';
 
 export default function CreateTournamentPage() {
@@ -28,7 +30,13 @@ export default function CreateTournamentPage() {
   const [timeControl, setTimeControl] = useState<'bullet' | 'blitz' | 'rapid' | 'classical'>('blitz');
   const [initialMinutes, setInitialMinutes] = useState('5');
   const [incrementSeconds, setIncrementSeconds] = useState('0');
-  const [maxPlayers, setMaxPlayers] = useState('');
+
+  // Paid vs Free
+  const [isPaid, setIsPaid] = useState(true);
+  const [entryFeeMwk, setEntryFeeMwk] = useState('1000');
+  const [minPlayers, setMinPlayers] = useState('4');
+  const [maxPlayers, setMaxPlayers] = useState('16');
+  const [creatorProfitPercent, setCreatorProfitPercent] = useState('50');
   const [rounds, setRounds] = useState('5');
   const [durationMinutes, setDurationMinutes] = useState('60');
 
@@ -45,12 +53,9 @@ export default function CreateTournamentPage() {
   }, []);
   const [endsAt, setEndsAt] = useState('');
 
-  const [entryFeeMwk, setEntryFeeMwk] = useState('0');
-  const [prizePoolMwk, setPrizePoolMwk] = useState('0');
   const [minRating, setMinRating] = useState('0');
   const [maxRating, setMaxRating] = useState('');
 
-  // Auto-adjust time controls when selecting preset
   const handleTimeControlChange = (tc: 'bullet' | 'blitz' | 'rapid' | 'classical') => {
     setTimeControl(tc);
     switch (tc) {
@@ -73,6 +78,23 @@ export default function CreateTournamentPage() {
     }
   };
 
+  // Economics preview
+  const entryFee = parseFloat(entryFeeMwk) || 0;
+  const minP = parseInt(minPlayers) || 4;
+  const maxP = parseInt(maxPlayers) || 16;
+  const profitPct = parseInt(creatorProfitPercent) || 0;
+  const minCollected = entryFee * minP;
+  const maxCollected = entryFee * maxP;
+  const platformCutPct = 10;
+
+  const calcEconomics = (collected: number) => {
+    const platformCut = Math.floor(collected * (platformCutPct / 100));
+    const remainder = collected - platformCut;
+    const creatorProfit = Math.floor(remainder * (profitPct / 100));
+    const prizePool = remainder - creatorProfit;
+    return { platformCut, creatorProfit, prizePool };
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -85,10 +107,17 @@ export default function CreateTournamentPage() {
       if (!startsAt) {
         throw new Error('Start time is required');
       }
+      if (parseInt(minPlayers) < 2) {
+        throw new Error('Minimum 2 players required');
+      }
+      if (maxPlayers && parseInt(maxPlayers) < parseInt(minPlayers)) {
+        throw new Error('Max players must be ≥ min players');
+      }
+      if (isPaid && entryFee <= 0) {
+        throw new Error('Entry fee must be greater than 0 for paid tournaments');
+      }
 
-      // Convert MWK inputs to Cents (1 MWK = 100 Cents)
-      const entryFeeCents = Math.round((parseFloat(entryFeeMwk) || 0) * 100);
-      const prizePoolCents = Math.round((parseFloat(prizePoolMwk) || 0) * 100);
+      const entryFeeCents = isPaid ? Math.round(entryFee * 100) : 0;
 
       const payload = {
         name: name.trim(),
@@ -98,21 +127,20 @@ export default function CreateTournamentPage() {
         initialMinutes: parseInt(initialMinutes, 10) || 5,
         incrementSeconds: parseInt(incrementSeconds, 10) || 0,
         maxPlayers: maxPlayers ? parseInt(maxPlayers, 10) : null,
+        minPlayers: parseInt(minPlayers, 10) || 2,
         rounds: rounds ? parseInt(rounds, 10) : null,
         durationMinutes: durationMinutes ? parseInt(durationMinutes, 10) : null,
         startsAt: new Date(startsAt).toISOString(),
         endsAt: endsAt ? new Date(endsAt).toISOString() : null,
         entryFeeCents,
-        prizePoolCents,
+        creatorProfitPercent: isPaid ? parseInt(creatorProfitPercent) || 0 : 0,
         minRating: parseInt(minRating, 10) || 0,
         maxRating: maxRating ? parseInt(maxRating, 10) : null,
       };
 
       const res = await fetch('/api/tournaments/create', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
@@ -122,7 +150,7 @@ export default function CreateTournamentPage() {
         throw new Error(data.error || 'Failed to create tournament');
       }
 
-      router.push('/tournaments');
+      router.push(`/tournaments/${data.tournament.id}`);
     } catch (err: any) {
       setError(err.message || 'An error occurred while creating the tournament.');
     } finally {
@@ -148,7 +176,7 @@ export default function CreateTournamentPage() {
         </div>
         <div>
           <h1 className="text-2xl font-bold">Create Tournament</h1>
-          <p className="text-sm text-ccb-muted">Configure and schedule a new competitive tournament</p>
+          <p className="text-sm text-ccb-muted">Set up a tournament for the community</p>
         </div>
       </div>
 
@@ -172,7 +200,7 @@ export default function CreateTournamentPage() {
             <input
               type="text"
               className="input w-full"
-              placeholder="e.g. Grand Master Blitz Championship"
+              placeholder="e.g. Friday Night Blitz"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -203,33 +231,21 @@ export default function CreateTournamentPage() {
               </select>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Max Players</label>
-              <input
-                type="number"
-                className="input w-full"
-                placeholder="Unlimited if empty"
-                min="2"
-                value={maxPlayers}
-                onChange={(e) => setMaxPlayers(e.target.value)}
-              />
-            </div>
+            {(type === 'swiss' || type === 'knockout') && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Number of Rounds</label>
+                <input
+                  type="number"
+                  className="input w-full"
+                  placeholder="5"
+                  min="1"
+                  max="20"
+                  value={rounds}
+                  onChange={(e) => setRounds(e.target.value)}
+                />
+              </div>
+            )}
           </div>
-
-          {(type === 'swiss' || type === 'knockout') && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Number of Rounds</label>
-              <input
-                type="number"
-                className="input w-full"
-                placeholder="5"
-                min="1"
-                max="20"
-                value={rounds}
-                onChange={(e) => setRounds(e.target.value)}
-              />
-            </div>
-          )}
 
           {type === 'arena' && (
             <div className="space-y-2">
@@ -331,77 +347,215 @@ export default function CreateTournamentPage() {
           </div>
         </div>
 
-        {/* Financials & Rating Restrictions */}
+        {/* Tournament Type: Free vs Paid */}
         <div className="card space-y-4">
           <h3 className="text-lg font-bold flex items-center gap-2">
             <Coins className="w-4 h-4 text-amber-400" />
-            Entry Fee, Prizes & Eligibility
+            Tournament Type
           </h3>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Entry Fee (MWK)</label>
-              <input
-                type="number"
-                className="input w-full"
-                placeholder="0 for free entry"
-                min="0"
-                step="1"
-                value={entryFeeMwk}
-                onChange={(e) => setEntryFeeMwk(e.target.value)}
-              />
-              <p className="text-xs text-ccb-muted">Amount in MWK (e.g. 5,000)</p>
-            </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setIsPaid(false)}
+              className={`p-4 rounded-lg border-2 transition-all text-left ${
+                !isPaid
+                  ? 'border-ccb-primary bg-ccb-primary/5'
+                  : 'border-ccb-surface bg-ccb-surface/30 hover:border-ccb-muted'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Users className="w-4 h-4 text-ccb-primary" />
+                <span className="font-semibold text-sm">Free Tournament</span>
+              </div>
+              <p className="text-xs text-ccb-muted">No entry fee. Play for fun and ranking.</p>
+            </button>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Prize Pool (MWK)</label>
-              <input
-                type="number"
-                className="input w-full"
-                placeholder="0 if no guaranteed prize"
-                min="0"
-                step="1"
-                value={prizePoolMwk}
-                onChange={(e) => setPrizePoolMwk(e.target.value)}
-              />
-              <p className="text-xs text-ccb-muted">Total prize pool in MWK</p>
-            </div>
+            <button
+              type="button"
+              onClick={() => setIsPaid(true)}
+              className={`p-4 rounded-lg border-2 transition-all text-left ${
+                isPaid
+                  ? 'border-ccb-primary bg-ccb-primary/5'
+                  : 'border-ccb-surface bg-ccb-surface/30 hover:border-ccb-muted'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <TrendingUp className="w-4 h-4 text-ccb-success" />
+                <span className="font-semibold text-sm">Paid Tournament</span>
+              </div>
+              <p className="text-xs text-ccb-muted">Entry fee, prize pool, and you earn a cut.</p>
+            </button>
           </div>
+        </div>
 
-          {/* Prize Distribution Preview — depends on tournament format */}
-          {parseFloat(prizePoolMwk) > 0 && (
-            <div className="p-3 rounded-lg bg-ccb-surface/50 border border-ccb-surface space-y-2">
-              <p className="text-xs font-medium text-ccb-muted">
-                Prize Distribution ({type === "knockout" ? "Top 4" : "Top 5"})
-              </p>
-              <div className={`grid gap-2 text-center ${type === "knockout" ? "grid-cols-4" : "grid-cols-5"}`}>
-                {(type === "knockout"
-                  ? [
-                      { rank: "1st", pct: 50 },
-                      { rank: "2nd", pct: 25 },
-                      { rank: "3rd", pct: 15 },
-                      { rank: "4th", pct: 10 },
-                    ]
-                  : [
-                      { rank: "1st", pct: 40 },
-                      { rank: "2nd", pct: 20 },
-                      { rank: "3rd", pct: 18 },
-                      { rank: "4th", pct: 12 },
-                      { rank: "5th", pct: 10 },
-                    ]
-                ).map((tier) => {
-                  const amount = Math.floor((parseFloat(prizePoolMwk) || 0) * (tier.pct / 100));
-                  return (
-                    <div key={tier.rank} className="space-y-0.5">
-                      <div className="text-xs text-ccb-muted">{tier.rank}</div>
-                      <div className="text-sm font-bold text-ccb-accent">{tier.pct}%</div>
-                      <div className="text-xs text-ccb-muted">MWK {amount.toLocaleString("en-US")}</div>
-                    </div>
-                  );
-                })}
+        {/* Paid Tournament Economics */}
+        {isPaid && (
+          <div className="card space-y-4">
+            <h3 className="text-lg font-bold flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-ccb-success" />
+              Entry Fee & Earnings
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Entry Fee (MWK)</label>
+                <input
+                  type="number"
+                  className="input w-full"
+                  placeholder="1000"
+                  min="1"
+                  step="1"
+                  value={entryFeeMwk}
+                  onChange={(e) => setEntryFeeMwk(e.target.value)}
+                />
+                <p className="text-xs text-ccb-muted">Per player, in MWK</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-1">
+                  <Percent className="w-3.5 h-3.5" />
+                  Your Profit Share (%)
+                </label>
+                <input
+                  type="range"
+                  className="w-full accent-ccb-primary"
+                  min="0"
+                  max="100"
+                  value={creatorProfitPercent}
+                  onChange={(e) => setCreatorProfitPercent(e.target.value)}
+                />
+                <div className="flex justify-between text-xs text-ccb-muted">
+                  <span>0% (all prize pool)</span>
+                  <span className="font-bold text-ccb-primary">{creatorProfitPercent}%</span>
+                  <span>100% (all profit)</span>
+                </div>
+                <p className="text-xs text-ccb-muted">
+                  After the 10% platform cut, you take {creatorProfitPercent}% of the remainder.
+                  The rest goes to the prize pool.
+                </p>
               </div>
             </div>
-          )}
+
+            {/* Economics Breakdown */}
+            {entryFee > 0 && minP > 0 && (
+              <div className="p-4 rounded-lg bg-ccb-surface/50 border border-ccb-surface space-y-3">
+                <p className="text-xs font-medium text-ccb-muted">Economics Preview</p>
+
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <p className="text-ccb-muted mb-1">If minimum met ({minP} players)</p>
+                    <div className="space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-ccb-muted">Collected:</span>
+                        <span className="font-medium">MWK {minCollected.toLocaleString()}</span>
+                      </div>
+                      {(() => {
+                        const e = calcEconomics(minCollected);
+                        return (
+                          <>
+                            <div className="flex justify-between text-ccb-muted/70">
+                              <span>Platform (10%):</span>
+                              <span>-MWK {e.platformCut.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between text-ccb-success">
+                              <span>Your profit ({profitPct}%):</span>
+                              <span>MWK {e.creatorProfit.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between text-ccb-accent font-medium">
+                              <span>Prize pool:</span>
+                              <span>MWK {e.prizePool.toLocaleString()}</span>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-ccb-muted mb-1">If full ({maxP} players)</p>
+                    <div className="space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-ccb-muted">Collected:</span>
+                        <span className="font-medium">MWK {maxCollected.toLocaleString()}</span>
+                      </div>
+                      {(() => {
+                        const e = calcEconomics(maxCollected);
+                        return (
+                          <>
+                            <div className="flex justify-between text-ccb-muted/70">
+                              <span>Platform (10%):</span>
+                              <span>-MWK {e.platformCut.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between text-ccb-success">
+                              <span>Your profit ({profitPct}%):</span>
+                              <span>MWK {e.creatorProfit.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between text-ccb-accent font-medium">
+                              <span>Prize pool:</span>
+                              <span>MWK {e.prizePool.toLocaleString()}</span>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+                {(() => {
+                  const minE = calcEconomics(minCollected);
+                  return (
+                    <p className="text-xs text-ccb-muted pt-2 border-t border-ccb-surface">
+                      ⚠️ If fewer than {minP} players join by start time, all entry fees are refunded and the tournament is cancelled.
+                    </p>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Players & Eligibility */}
+        <div className="card space-y-4">
+          <h3 className="text-lg font-bold flex items-center gap-2">
+            <Users className="w-4 h-4 text-ccb-primary" />
+            Players & Eligibility
+          </h3>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                {isPaid ? "Min Players *" : "Min Players"}
+              </label>
+              <input
+                type="number"
+                className="input w-full"
+                placeholder="4"
+                min="2"
+                value={minPlayers}
+                onChange={(e) => setMinPlayers(e.target.value)}
+              />
+              <p className="text-xs text-ccb-muted">
+                {isPaid
+                  ? "Cancel & refund if not met"
+                  : "Cancel if not met"
+                }
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Max Players</label>
+              <input
+                type="number"
+                className="input w-full"
+                placeholder="16"
+                min="2"
+                value={maxPlayers}
+                onChange={(e) => setMaxPlayers(e.target.value)}
+              />
+              <p className="text-xs text-ccb-muted">Leave empty for unlimited</p>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">

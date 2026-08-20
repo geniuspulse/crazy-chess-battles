@@ -16,24 +16,12 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("is_admin")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.is_admin) {
-      return NextResponse.json(
-        { error: "Forbidden: Admin privileges required" },
-        { status: 403 }
-      );
-    }
-
     const resolvedParams = await params;
     const tournamentId = resolvedParams.id;
 
-    // Fetch tournament
-    const { data: tournament, error: tError } = await supabase
+    // Fetch tournament first to check ownership
+    const admin = createAdminClient();
+    const { data: tournament, error: tError } = await admin
       .from("tournaments")
       .select("*")
       .eq("id", tournamentId)
@@ -43,12 +31,43 @@ export async function POST(
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
     }
 
+    // Check authorization: admin OR tournament creator
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("is_admin")
+      .eq("id", user.id)
+      .single();
+
+    const isAdmin = profile?.is_admin ?? false;
+    const isCreator = tournament.created_by === user.id;
+
+    if (!isAdmin && !isCreator) {
+      return NextResponse.json(
+        { error: "Only the tournament creator or an admin can start the tournament" },
+        { status: 403 }
+      );
+    }
+
     if (tournament.status !== "upcoming") {
       return NextResponse.json({ error: "Tournament is not upcoming" }, { status: 400 });
     }
 
+    // Check minimum players
+    const { count } = await admin
+      .from("tournament_participants")
+      .select("id", { count: "exact", head: true })
+      .eq("tournament_id", tournamentId);
+
+    const minRequired = tournament.min_players || 2;
+    if (count !== null && count < minRequired) {
+      return NextResponse.json(
+        { error: `Minimum ${minRequired} players required. Currently ${count} registered.` },
+        { status: 400 }
+      );
+    }
+
     // Fetch all participants
-    const { data: participants, error: pError } = await supabase
+    const { data: participants, error: pError } = await admin
       .from("tournament_participants")
       .select("player_id, score")
       .eq("tournament_id", tournamentId);
@@ -63,7 +82,7 @@ export async function POST(
 
     // Fetch ratings for seeding
     const playerIds = participants.map((p) => p.player_id);
-    const { data: profiles } = await supabase
+    const { data: profiles } = await admin
       .from("profiles")
       .select("id, rating")
       .in("id", playerIds);
@@ -78,9 +97,7 @@ export async function POST(
       }))
       .sort((a, b) => b.rating - a.rating);
 
-    // Update seeds using admin client (bypasses RLS)
-    const admin = createAdminClient();
-    
+    // Update seeds
     for (let i = 0; i < seeded.length; i++) {
       await admin
         .from("tournament_participants")
@@ -90,12 +107,7 @@ export async function POST(
     }
 
     // Generate Swiss pairings for Round 1
-    // Simple Swiss: pair top half vs bottom half
-    const pairings: Array<{
-      white: string;
-      black: string;
-      bye?: string;
-    }> = [];
+    const pairings: Array<{ white: string; black: string; bye?: string }> = [];
 
     if (seeded.length === 1) {
       pairings.push({ white: "", black: "", bye: seeded[0].player_id });
@@ -115,7 +127,7 @@ export async function POST(
       }
     }
 
-    // Create tournament round entry (uses is_complete, not status)
+    // Create tournament round entry
     const { error: roundError } = await admin
       .from("tournament_rounds")
       .insert({
@@ -133,7 +145,6 @@ export async function POST(
 
     if (roundError) {
       console.error("Round creation error:", roundError);
-      // Continue anyway — the tournament is started
     }
 
     // Create game entries for each pairing and award byes
@@ -149,7 +160,7 @@ export async function POST(
 
       const whiteRating = ratingMap.get(pairing.white) || 1200;
       const blackRating = ratingMap.get(pairing.black) || 1200;
-      const initialMs = tournament.initial_minutes * 60 * 1000;
+      const initialMs = (tournament.initial_minutes || 10) * 60 * 1000;
 
       await admin.from("games").insert({
         white_player_id: pairing.white,

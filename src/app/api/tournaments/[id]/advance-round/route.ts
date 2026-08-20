@@ -14,16 +14,6 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("is_admin")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.is_admin) {
-      return NextResponse.json({ error: "Forbidden: Admin only" }, { status: 403 });
-    }
-
     const { id: tournamentId } = await params;
     const admin = createAdminClient();
 
@@ -35,6 +25,20 @@ export async function POST(
 
     if (!tournament) {
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+    }
+
+    // Check authorization: admin OR tournament creator
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("is_admin")
+      .eq("id", user.id)
+      .single();
+
+    const isAdmin = profile?.is_admin ?? false;
+    const isCreator = tournament.created_by === user.id;
+
+    if (!isAdmin && !isCreator) {
+      return NextResponse.json({ error: "Only the tournament creator or an admin can manage the tournament" }, { status: 403 });
     }
 
     if (tournament.status !== "active") {

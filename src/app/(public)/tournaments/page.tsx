@@ -19,7 +19,7 @@ function formatPrizePool(cents: number | null | undefined): string {
 export default async function TournamentsPage() {
   const supabase = await createClient();
 
-  // Get user + admin status (optional — page works without auth)
+  // Get user (optional — page works without auth)
   const { data: { user } } = await supabase.auth.getUser();
   let isAdmin = false;
   if (user) {
@@ -42,14 +42,33 @@ export default async function TournamentsPage() {
       status,
       starts_at,
       max_players,
+      min_players,
       duration_minutes,
       rounds,
       entry_fee_cents,
       prize_pool_cents,
+      creator_profit_percent,
+      created_by,
       tournament_participants(count)
     `)
     .order("starts_at", { ascending: false })
     .limit(20);
+
+  // Fetch creator profiles for user-created tournaments
+  const creatorIds = (tournaments || [])
+    .filter(t => t.creator_profit_percent > 0 && t.created_by)
+    .map(t => t.created_by);
+
+  let creatorMap: Record<string, { username: string; display_name: string }> = {};
+  if (creatorIds.length > 0) {
+    const { data: creators } = await supabase
+      .from("profiles")
+      .select("id, username, display_name")
+      .in("id", [...new Set(creatorIds)]);
+    creatorMap = Object.fromEntries(
+      (creators || []).map(c => [c.id, { username: c.username, display_name: c.display_name || c.username }])
+    );
+  }
 
   const statusColors: Record<string, string> = {
     upcoming: "text-ccb-accent bg-ccb-accent/10 border-ccb-accent/20",
@@ -65,7 +84,8 @@ export default async function TournamentsPage() {
           <h1 className="text-xl sm:text-2xl font-bold">Tournaments</h1>
           <p className="text-sm text-ccb-muted mt-1">Compete for glory and prizes</p>
         </div>
-        {isAdmin && (
+        {/* Any logged-in user can create tournaments */}
+        {user && (
           <Link
             href="/tournaments/create"
             className="btn-primary inline-flex items-center gap-2 text-sm px-3 sm:px-4"
@@ -83,6 +103,10 @@ export default async function TournamentsPage() {
               ? (t.tournament_participants[0]?.count ?? t.tournament_participants.length)
               : 0;
 
+            const isUserCreated = t.creator_profit_percent > 0;
+            const creator = isUserCreated && t.created_by ? creatorMap[t.created_by] : null;
+            const isPaid = t.entry_fee_cents > 0;
+
             return (
               <Link
                 key={t.id}
@@ -99,13 +123,18 @@ export default async function TournamentsPage() {
                         <h3 className="font-bold text-base group-hover:text-ccb-primary transition-colors">
                           {t.name}
                         </h3>
-                        <span
-                          className={`badge border ${
-                            statusColors[t.status] || "text-ccb-muted bg-ccb-surface"
-                          } capitalize text-[11px]`}
-                        >
-                          {t.status}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`badge border ${
+                              statusColors[t.status] || "text-ccb-muted bg-ccb-surface"
+                            } capitalize text-[11px]`}
+                          >
+                            {t.status}
+                          </span>
+                          <span className={`badge text-[11px] ${isPaid ? "bg-ccb-success/10 text-ccb-success" : "bg-ccb-primary/10 text-ccb-primary"}`}>
+                            {isPaid ? "Paid" : "Free"}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -131,7 +160,9 @@ export default async function TournamentsPage() {
                         <span>Prize</span>
                       </div>
                       <div className="font-semibold text-ccb-accent">
-                        {formatPrizePool(t.prize_pool_cents)}
+                        {isPaid
+                          ? `${participantCount} joined`
+                          : formatPrizePool(t.prize_pool_cents)}
                       </div>
                     </div>
 
@@ -146,6 +177,12 @@ export default async function TournamentsPage() {
                       </div>
                     </div>
                   </div>
+
+                  {isUserCreated && creator && (
+                    <p className="text-xs text-ccb-muted mb-2">
+                      Created by <span className="font-medium text-ccb-text">{creator.display_name}</span>
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between text-xs text-ccb-muted pt-3 border-t border-ccb-surface">
@@ -156,6 +193,12 @@ export default async function TournamentsPage() {
                       <Clock className="w-3 h-3" />
                       {t.time_control}
                     </span>
+                    {t.min_players && t.min_players > 0 && (
+                      <>
+                        <span>•</span>
+                        <span>Min: {t.min_players}</span>
+                      </>
+                    )}
                   </div>
 
                   <span>
@@ -174,8 +217,17 @@ export default async function TournamentsPage() {
       ) : (
         <div className="card text-center py-12">
           <Trophy className="w-12 h-12 text-ccb-muted mx-auto mb-4" />
-          <h3 className="font-medium mb-1">No tournaments yet</h3>
-          <p className="text-sm text-ccb-muted">Tournaments will appear here once scheduled.</p>
+          <h3 className="text-lg font-bold mb-2">No tournaments yet</h3>
+          <p className="text-sm text-ccb-muted mb-4">Be the first to create one!</p>
+          {user && (
+            <Link
+              href="/tournaments/create"
+              className="btn-primary inline-flex items-center gap-2 text-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Create Tournament
+            </Link>
+          )}
         </div>
       )}
     </div>

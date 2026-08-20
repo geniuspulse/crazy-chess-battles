@@ -16,6 +16,7 @@ import {
   Swords,
   CheckCircle2,
   CircleDot,
+  TrendingUp,
 } from "lucide-react";
 import TournamentActions from "./tournament-actions";
 
@@ -58,6 +59,7 @@ export default async function TournamentDetailPage({
       increment_seconds,
       status,
       max_players,
+      min_players,
       min_rating,
       max_rating,
       rounds,
@@ -67,8 +69,9 @@ export default async function TournamentDetailPage({
       ends_at,
       entry_fee_cents,
       prize_pool_cents,
-      prize_distribution,
-      created_by
+      creator_profit_percent,
+      created_by,
+      prize_distribution
     `
     )
     .eq("id", id)
@@ -105,7 +108,6 @@ export default async function TournamentDetailPage({
     .eq("tournament_id", id)
     .order("score", { ascending: false });
 
-
   const participants = rawParticipants || [];
 
   // Fetch current round pairings and games (for active tournaments)
@@ -134,6 +136,7 @@ export default async function TournamentDetailPage({
 
   // Check current user profile & participation (optional — page works without auth)
   let isAdmin = false;
+  let isCreator = false;
   let isJoined = false;
   let walletBalance = 0;
 
@@ -145,9 +148,35 @@ export default async function TournamentDetailPage({
       .single();
 
     isAdmin = profile?.is_admin ?? false;
+    isCreator = tournament.created_by === user.id;
     isJoined = participants.some((p) => p.player_id === user.id);
     walletBalance = profile?.wallet_balance_cents ?? 0;
   }
+
+  // Fetch creator profile
+  let creatorInfo: { username: string; display_name: string } | null = null;
+  if (tournament.created_by) {
+    const { data: creator } = await supabase
+      .from("profiles")
+      .select("username, display_name")
+      .eq("id", tournament.created_by)
+      .single();
+    if (creator) {
+      creatorInfo = { username: creator.username, display_name: creator.display_name || creator.username };
+    }
+  }
+
+  const isPaid = tournament.entry_fee_cents > 0;
+  const isUserCreated = tournament.creator_profit_percent > 0;
+  const canManage = isAdmin || isCreator;
+
+  // Economics calculations for display
+  const totalCollected = tournament.prize_pool_cents || 0;
+  const platformCutPct = 10;
+  const platformCut = Math.floor(totalCollected * (platformCutPct / 100));
+  const remainder = totalCollected - platformCut;
+  const creatorProfit = Math.floor(remainder * ((tournament.creator_profit_percent || 0) / 100));
+  const actualPrizePool = remainder - creatorProfit;
 
   const statusColors: Record<string, string> = {
     upcoming: "text-ccb-accent bg-ccb-accent/10 border-ccb-accent/20",
@@ -167,7 +196,6 @@ export default async function TournamentDetailPage({
     if (tournament.status === "active") {
       return b.score - a.score || b.wins - a.wins;
     }
-    // upcoming: sort by seed if present, or joined_at
     if (a.seed && b.seed) return a.seed - b.seed;
     return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
   });
@@ -197,13 +225,21 @@ export default async function TournamentDetailPage({
               <span className="badge bg-ccb-surface text-ccb-silver uppercase">
                 {tournament.type}
               </span>
+              <span className={`badge ${isPaid ? "bg-ccb-success/10 text-ccb-success" : "bg-ccb-primary/10 text-ccb-primary"}`}>
+                {isPaid ? "Paid" : "Free"}
+              </span>
             </div>
             {tournament.description && (
               <p className="text-sm text-ccb-muted max-w-2xl whitespace-pre-wrap">{tournament.description}</p>
             )}
+            {creatorInfo && (
+              <p className="text-xs text-ccb-muted">
+                Created by <span className="font-medium text-ccb-text">{creatorInfo.display_name}</span>
+              </p>
+            )}
           </div>
 
-          {/* User & Admin action buttons */}
+          {/* User & Admin/Creator action buttons */}
           <TournamentActions
             tournamentId={tournament.id}
             status={tournament.status}
@@ -213,6 +249,8 @@ export default async function TournamentDetailPage({
             prizePoolCents={tournament.prize_pool_cents}
             walletBalanceCents={walletBalance}
             isAdmin={isAdmin}
+            isCreator={isCreator}
+            canManage={canManage}
           />
         </div>
 
@@ -248,6 +286,16 @@ export default async function TournamentDetailPage({
               {tournament.time_control} ({tournament.initial_minutes}+{tournament.increment_seconds})
             </div>
           </div>
+
+          {tournament.min_players && tournament.min_players > 0 && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-xs text-ccb-muted">
+                <Users className="w-3.5 h-3.5" />
+                <span>Min Players</span>
+              </div>
+              <div className="font-semibold">{tournament.min_players}</div>
+            </div>
+          )}
         </div>
 
         {/* Schedule & Format Details */}
@@ -300,9 +348,43 @@ export default async function TournamentDetailPage({
         </div>
       </div>
 
-      {/* Prize Distribution Breakdown — reflects the actual stored payout config, which
-          varies by tournament format (e.g. knockout rewards top 4, swiss/arena reward top 5) */}
-      {tournament.prize_pool_cents && tournament.prize_pool_cents > 0 && (
+      {/* Economics Breakdown — for user-created paid tournaments */}
+      {isUserCreated && isPaid && totalCollected > 0 && (
+        <div className="card space-y-4">
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-ccb-success" />
+            Prize Pool & Earnings
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3 rounded-lg bg-ccb-surface/50 text-center">
+              <p className="text-xs text-ccb-muted mb-1">Total Collected</p>
+              <p className="font-bold text-ccb-text">{formatPrizePool(totalCollected)}</p>
+            </div>
+            <div className="p-3 rounded-lg bg-ccb-surface/50 text-center">
+              <p className="text-xs text-ccb-muted mb-1">Platform (10%)</p>
+              <p className="font-bold text-ccb-muted">{formatPrizePool(platformCut)}</p>
+            </div>
+            {creatorInfo && (
+              <div className="p-3 rounded-lg bg-ccb-surface/50 text-center">
+                <p className="text-xs text-ccb-muted mb-1">Creator ({tournament.creator_profit_percent}%)</p>
+                <p className="font-bold text-ccb-success">{formatPrizePool(creatorProfit)}</p>
+              </div>
+            )}
+            <div className="p-3 rounded-lg bg-ccb-accent/10 text-center">
+              <p className="text-xs text-ccb-muted mb-1">Prize Pool</p>
+              <p className="font-bold text-ccb-accent">{formatPrizePool(actualPrizePool)}</p>
+            </div>
+          </div>
+          {tournament.status === "upcoming" && (
+            <p className="text-xs text-ccb-muted pt-2 border-t border-ccb-surface">
+              Prize pool grows as players join. Final amounts calculated when tournament ends.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Prize Distribution Breakdown */}
+      {((isPaid && totalCollected > 0) || (tournament.prize_pool_cents && tournament.prize_pool_cents > 0 && !isUserCreated)) && (
         <div className="card space-y-4">
           <h2 className="text-lg font-bold flex items-center gap-2">
             <Award className="w-5 h-5 text-ccb-accent" />
@@ -329,10 +411,13 @@ export default async function TournamentDetailPage({
                   ? tournament.prize_distribution.payouts
                   : fallback;
 
+              // For user-created tournaments, show estimated prize pool
+              const displayPrizePool = isUserCreated ? actualPrizePool : tournament.prize_pool_cents;
+
               return tiers
                 .sort((a, b) => a.rank - b.rank)
                 .map((tier) => {
-                  const amount = Math.floor(tournament.prize_pool_cents * (tier.percentage / 100));
+                  const amount = Math.floor(displayPrizePool * (tier.percentage / 100));
                   const meta = RANK_LABELS[tier.rank] || { label: `${tier.rank}th Place`, color: "text-ccb-muted" };
                   return (
                     <div key={tier.rank} className="flex items-center justify-between p-3 rounded-lg bg-ccb-surface/50">
@@ -399,31 +484,37 @@ export default async function TournamentDetailPage({
                         <span className="ml-2 text-xs text-ccb-accent">BYE</span>
                       </span>
                     ) : (
-                      <span className="text-sm flex items-center gap-2 flex-wrap">
-                        <span className={pairing.result === "black" ? "text-ccb-muted line-through" : "font-semibold"}>
+                      <>
+                        <span className="text-sm truncate">
                           {whiteProfile?.display_name || whiteProfile?.username || "Player"}
+                          <span className="text-ccb-muted text-xs ml-1">({whiteProfile?.rating || "?"})</span>
                         </span>
-                        <span className="text-ccb-muted text-xs">vs</span>
-                        <span className={pairing.result === "white" ? "text-ccb-muted line-through" : "font-semibold"}>
+                        <span className="text-xs text-ccb-muted shrink-0">vs</span>
+                        <span className="text-sm truncate">
                           {blackProfile?.display_name || blackProfile?.username || "Player"}
+                          <span className="text-ccb-muted text-xs ml-1">({blackProfile?.rating || "?"})</span>
                         </span>
-                      </span>
+                      </>
                     )}
                   </div>
+
                   <div className="shrink-0">
-                    {pairing.bye ? (
-                      <CheckCircle2 className="w-4 h-4 text-ccb-success" />
-                    ) : hasResult ? (
-                      <span className="text-xs px-2 py-1 rounded bg-ccb-success/10 text-ccb-success font-mono">
-                        {pairing.result === "white" ? "1-0" : pairing.result === "black" ? "0-1" : "½-½"}
-                      </span>
-                    ) : game ? (
-                      <Link href={`/game/${game.id}`} className="text-xs px-2 py-1 rounded bg-ccb-primary/10 text-ccb-primary hover:bg-ccb-primary/20 transition-colors">
-                        Watch →
+                    {game ? (
+                      <Link
+                        href={`/play/${game.id}`}
+                        className="text-xs font-medium text-ccb-primary hover:underline"
+                      >
+                        {game.status === "finished" ? (
+                          <span className="text-ccb-muted">Finished</span>
+                        ) : game.status === "playing" ? (
+                          <span className="text-ccb-success">Watch →</span>
+                        ) : (
+                          <span>View →</span>
+                        )}
                       </Link>
-                    ) : (
-                      <CircleDot className="w-4 h-4 text-ccb-muted" />
-                    )}
+                    ) : hasResult ? (
+                      <span className="text-xs text-ccb-muted">Done</span>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -432,142 +523,67 @@ export default async function TournamentDetailPage({
         </div>
       )}
 
-            {/* Standings / Participant List — hidden pre-tournament so players can't scout the field */}
-      {tournament.status !== "upcoming" && (
+      {/* Participants */}
       <div className="card space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold flex items-center gap-2">
-            <Trophy className="w-5 h-5 text-ccb-accent" />
-            {tournament.status === "finished"
-              ? "Final Standings"
-              : tournament.status === "active"
-              ? "Current Standings"
-              : "Registered Participants"}
-          </h2>
-          <span className="text-xs text-ccb-muted">
-            {participants.length} player{participants.length === 1 ? "" : "s"}
-          </span>
-        </div>
+        <h2 className="text-lg font-bold flex items-center gap-2">
+          <Users className="w-5 h-5 text-ccb-primary" />
+          Participants ({participants.length})
+        </h2>
 
-        {sortedParticipants.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-ccb-surface text-xs text-ccb-muted uppercase">
-                  <th className="py-3 px-3 w-16">
-                    {tournament.status === "upcoming" ? "Seed" : "Rank"}
-                  </th>
-                  <th className="py-3 px-3">Player</th>
-                  <th className="py-3 px-3 text-right">Rating</th>
-                  {tournament.status !== "upcoming" && (
-                    <>
-                      <th className="py-3 px-3 text-center">Played</th>
-                      <th className="py-3 px-3 text-center">W / D / L</th>
-                      <th className="py-3 px-3 text-right font-bold">Score</th>
-                    </>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-ccb-surface">
-                {sortedParticipants.map((p, index) => {
-                  const profile = Array.isArray(p.profiles) ? p.profiles[0] : p.profiles;
-                  const displayName =
-                    profile?.display_name || profile?.username || "Anonymous Player";
-                  const rating = profile?.rating ?? 1500;
-                  const rank = p.final_rank || index + 1;
-                  const isWinner =
-                    (tournament.status === "finished" && rank === 1) ||
-                    (tournament.status === "active" && index === 0 && p.score > 0);
-
-                  return (
-                    <tr
-                      key={p.id}
-                      className={`hover:bg-ccb-surface/50 transition-colors ${
-                        isWinner ? "bg-ccb-accent/5 font-medium" : ""
-                      }`}
-                    >
-                      {/* Seed or Rank */}
-                      <td className="py-3 px-3 font-semibold">
-                        {tournament.status === "upcoming" ? (
-                          <span className="text-ccb-muted">#{p.seed || index + 1}</span>
-                        ) : (
-                          <div className="flex items-center gap-1">
-                            {isWinner && <Crown className="w-4 h-4 text-amber-400 fill-amber-400" />}
-                            <span>#{rank}</span>
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Player profile */}
-                      <td className="py-3 px-3">
-                        <Link
-                          href={profile?.username ? `/profile/${profile.username}` : "#"}
-                          className="flex items-center gap-2.5 hover:text-ccb-primary transition-colors group"
-                        >
-                          <div className="w-8 h-8 rounded-full bg-ccb-surface border border-ccb-muted/20 flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden">
-                            {profile?.avatar_url ? (
-                              <img
-                                src={profile.avatar_url}
-                                alt={displayName}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              displayName.charAt(0).toUpperCase()
-                            )}
-                          </div>
-                          <div>
-                            <div className="font-semibold flex items-center gap-1.5">
-                              <span>{displayName}</span>
-                              {isWinner && (
-                                <span className="badge bg-amber-400/10 text-amber-400 text-[10px] px-1.5 py-0.5">
-                                  Winner
-                                </span>
-                              )}
-                            </div>
-                            {profile?.username && (
-                              <div className="text-xs text-ccb-muted font-normal">
-                                @{profile.username}
-                              </div>
-                            )}
-                          </div>
-                        </Link>
-                      </td>
-
-                      {/* Rating */}
-                      <td className="py-3 px-3 text-right font-mono text-ccb-muted">
-                        {rating}
-                      </td>
-
-                      {/* Stats if active or finished */}
-                      {tournament.status !== "upcoming" && (
-                        <>
-                          <td className="py-3 px-3 text-center font-mono">
-                            {p.games_played}
-                          </td>
-                          <td className="py-3 px-3 text-center text-xs font-mono text-ccb-muted">
-                            <span className="text-ccb-success">{p.wins}</span> /{" "}
-                            <span className="text-ccb-silver">{p.draws}</span> /{" "}
-                            <span className="text-ccb-danger">{p.losses}</span>
-                          </td>
-                          <td className="py-3 px-3 text-right font-bold font-mono text-ccb-primary">
-                            {p.score}
-                          </td>
-                        </>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        {participants.length === 0 ? (
+          <p className="text-sm text-ccb-muted text-center py-6">
+            No one has joined yet. Be the first!
+          </p>
         ) : (
-          <div className="text-center py-8 text-ccb-muted">
-            <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No players joined yet.</p>
+          <div className="space-y-1">
+            {sortedParticipants.map((p, i) => {
+              const profile = Array.isArray(p.profiles) ? p.profiles[0] : p.profiles;
+              const rank = tournament.status === "finished" && p.final_rank
+                ? p.final_rank
+                : i + 1;
+
+              return (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between p-2 rounded-lg hover:bg-ccb-surface/30 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                      rank === 1 ? "bg-ccb-accent/20 text-ccb-accent"
+                      : rank === 2 ? "bg-ccb-silver/20 text-ccb-silver"
+                      : rank === 3 ? "bg-ccb-bronze/20 text-ccb-bronze"
+                      : "bg-ccb-surface text-ccb-muted"
+                    }`}>
+                      {rank}
+                    </span>
+                    {profile?.avatar_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={profile.avatar_url}
+                        alt=""
+                        className="w-6 h-6 rounded-full shrink-0"
+                      />
+                    )}
+                    <span className="text-sm font-medium">
+                      {profile?.display_name || profile?.username || "Player"}
+                    </span>
+                    <span className="text-xs text-ccb-muted">({profile?.rating || "?"})</span>
+                  </div>
+
+                  {tournament.status !== "upcoming" && (
+                    <div className="flex items-center gap-3 text-xs text-ccb-muted">
+                      <span>{p.score || 0} pts</span>
+                      <span className="text-ccb-success">{p.wins || 0}W</span>
+                      <span className="text-ccb-muted">{p.losses || 0}L</span>
+                      <span className="text-ccb-muted">{p.draws || 0}D</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
-      )}
     </div>
   );
 }

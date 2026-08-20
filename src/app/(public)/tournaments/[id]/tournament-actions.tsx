@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   UserPlus, LogOut, Play, Square, Loader2, AlertCircle, ChevronRight,
-  Wallet, Smartphone, Check, X, Lock, RefreshCw,
+  Wallet, Smartphone, Check, X, Lock, RefreshCw, Trophy,
 } from 'lucide-react';
 import { detectOperator } from '@/lib/operator';
 
@@ -17,6 +17,8 @@ interface TournamentActionsProps {
   prizePoolCents: number;
   walletBalanceCents: number;
   isAdmin: boolean;
+  isCreator?: boolean;
+  canManage?: boolean;
 }
 
 export default function TournamentActions({
@@ -28,6 +30,8 @@ export default function TournamentActions({
   prizePoolCents,
   walletBalanceCents,
   isAdmin,
+  isCreator = false,
+  canManage = false,
 }: TournamentActionsProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -49,7 +53,6 @@ export default function TournamentActions({
   useEffect(() => {
     if (isLoggedIn && searchParams.get('action') === 'join' && status === 'upcoming' && !isJoined) {
       handleAction('join');
-      // Clean URL
       const url = new URL(window.location.href);
       url.searchParams.delete('action');
       window.history.replaceState({}, '', url.toString());
@@ -78,11 +81,10 @@ export default function TournamentActions({
           clearInterval(interval);
 
           if (autoJoinAfterDeposit) {
-            // Wait a moment for the success message, then auto-join
             setTimeout(() => {
               setShowDeposit(false);
               setAutoJoinAfterDeposit(false);
-              handleAction('join', true); // skipBalanceCheck = true (just deposited)
+              handleAction('join', true);
             }, 1500);
           } else {
             router.refresh();
@@ -124,14 +126,12 @@ export default function TournamentActions({
       const data = await res.json();
 
       if (!res.ok || data.error) {
-        // Check for insufficient funds
         if (res.status === 402 && action === 'join') {
-          // Show inline deposit widget
           const feeMwk = Math.ceil(entryFeeCents / 100);
           setDepositAmount(feeMwk);
           setShowDeposit(true);
           setAutoJoinAfterDeposit(true);
-          setError(null); // Clear the error — we're handling it with the deposit UI
+          setError(null);
           return;
         }
         throw new Error(data.error || `Failed to ${action} tournament`);
@@ -152,7 +152,6 @@ export default function TournamentActions({
 
   const handleJoinClick = () => {
     if (!isLoggedIn) {
-      // Redirect to login with return URL + action=join
       const currentPath = `/tournaments/${tournamentId}`;
       router.push(`/login?redirect=${encodeURIComponent(currentPath)}&action=join`);
       return;
@@ -255,8 +254,8 @@ export default function TournamentActions({
           </>
         )}
 
-        {/* Admin controls */}
-        {isAdmin && (
+        {/* Creator & Admin controls */}
+        {canManage && (
           <>
             {status === 'upcoming' && (
               <button
@@ -301,7 +300,7 @@ export default function TournamentActions({
                 <button
                   onClick={() => handleAction('finish')}
                   disabled={loadingAction !== null}
-                  className="px-4 py-2 text-sm font-medium rounded-lg bg-ccb-danger text-white hover:bg-ccb-danger/90 transition-colors flex items-center gap-2 disabled:opacity-50"
+                  className="px-4 py-2 text-sm font-medium rounded-lg bg-ccb-danger/90 text-white hover:bg-ccb-danger transition-colors flex items-center gap-2 disabled:opacity-50"
                 >
                   {loadingAction === 'finish' ? (
                     <>
@@ -310,8 +309,8 @@ export default function TournamentActions({
                     </>
                   ) : (
                     <>
-                      <Square className="w-4 h-4 fill-current" />
-                      <span>Finish Tournament</span>
+                      <Square className="w-4 h-4" />
+                      <span>Finish & Distribute</span>
                     </>
                   )}
                 </button>
@@ -319,113 +318,66 @@ export default function TournamentActions({
             )}
           </>
         )}
+
+        {status === 'finished' && (
+          <span className="badge bg-ccb-surface text-ccb-muted">
+            <Trophy className="w-3.5 h-3.5 mr-1" />
+            Tournament Complete
+          </span>
+        )}
+
+        {status === 'cancelled' && (
+          <span className="badge bg-ccb-danger/10 text-ccb-danger">
+            Cancelled — Entry fees refunded
+          </span>
+        )}
       </div>
 
-      {/* Inline Deposit Widget — shows when user has insufficient balance to join */}
+      {/* Inline Deposit Widget */}
       {showDeposit && (
-        <div className="card border border-ccb-accent/30 space-y-4 p-4 mt-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-ccb-accent" />
-                Deposit to Join Tournament
-              </h3>
-              <p className="text-xs text-ccb-muted mt-1">
-                Entry fee: MWK {Math.floor(entryFeeCents / 100).toLocaleString()} · Your balance: MWK {Math.floor(walletBalanceCents / 100).toLocaleString()}
-              </p>
-            </div>
+        <div className="p-4 rounded-lg bg-ccb-surface/50 border border-ccb-surface space-y-3">
+          <div className="flex items-center gap-2">
+            <Wallet className="w-4 h-4 text-ccb-primary" />
+            <h4 className="text-sm font-bold">Deposit to Your Wallet</h4>
+          </div>
+          <p className="text-xs text-ccb-muted">
+            Entry fee is MWK {Math.floor(entryFeeCents / 100).toLocaleString()}. Your balance is MWK {Math.floor(walletBalanceCents / 100).toLocaleString()}.
+            Deposit at least MWK {Math.ceil((entryFeeCents - walletBalanceCents) / 100).toLocaleString()} to join.
+          </p>
+
+          <div className="flex gap-2">
+            <input
+              type="tel"
+              placeholder="0991234567"
+              className="input flex-1"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
             <button
-              onClick={() => { setShowDeposit(false); setAutoJoinAfterDeposit(false); setDepositError(null); setDepositSuccess(null); }}
-              className="text-ccb-muted hover:text-ccb-fg p-1 rounded"
+              onClick={handleDeposit}
+              disabled={depositLoading || polling}
+              className="btn-primary flex items-center gap-2 shrink-0"
             >
-              <X className="w-4 h-4" />
+              {depositLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : polling ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Smartphone className="w-4 h-4" />
+              )}
+              <span className="text-sm">{depositLoading ? 'Sending...' : polling ? 'Waiting...' : 'Deposit'}</span>
             </button>
           </div>
 
-          {depositSuccess && (
-            <div className="p-3 text-sm text-ccb-success bg-ccb-success/10 border border-ccb-success/20 rounded-lg flex items-center gap-2">
-              <Check className="w-4 h-4 shrink-0" />
-              <span>{depositSuccess}</span>
-            </div>
-          )}
-
           {depositError && (
-            <div className="p-3 text-sm text-ccb-danger bg-ccb-danger/10 border border-ccb-danger/20 rounded-lg flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{depositError}</span>
-            </div>
+            <p className="text-xs text-ccb-danger flex items-center gap-1">
+              <X className="w-3 h-3" /> {depositError}
+            </p>
           )}
-
-          {pendingChargeId ? (
-            <div className="flex items-center justify-center py-6 space-y-3 flex-col">
-              <Loader2 className="w-6 h-6 animate-spin text-ccb-accent" />
-              <p className="text-sm text-ccb-muted">Waiting for payment confirmation...</p>
-              <p className="text-xs text-ccb-muted">Check your phone and authorize the payment.</p>
-            </div>
-          ) : (
-            !depositSuccess && (
-              <>
-                {/* Amount — pre-filled with entry fee, can add more */}
-                <div>
-                  <label className="text-xs font-medium text-ccb-muted">Amount (MWK)</label>
-                  <input
-                    type="number"
-                    value={depositAmount}
-                    onChange={(e) => setDepositAmount(Number(e.target.value))}
-                    className="input-field mt-1 w-full"
-                    min={entryFeeCents / 100}
-                  />
-                  <div className="flex gap-2 mt-2">
-                    {[Math.ceil(entryFeeCents / 100), 1000, 2000, 5000].filter((amt, i, arr) => arr.indexOf(amt) === i).map((amt) => (
-                      <button
-                        key={amt}
-                        onClick={() => setDepositAmount(amt)}
-                        className="text-xs px-2 py-1 rounded bg-ccb-surface border border-ccb-border text-ccb-muted hover:bg-ccb-accent/10 hover:text-ccb-accent transition-colors"
-                      >
-                        {amt.toLocaleString()}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Phone number */}
-                <div>
-                  <label className="text-xs font-medium text-ccb-muted">Phone Number</label>
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="0991234567"
-                    className="input-field mt-1 w-full"
-                  />
-                </div>
-
-                <button
-                  onClick={handleDeposit}
-                  disabled={depositLoading || !phone || depositAmount < 1}
-                  className="btn-primary w-full flex items-center justify-center gap-2"
-                >
-                  {depositLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Initiating...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Smartphone className="w-4 h-4" />
-                      <span>Deposit MWK {depositAmount.toLocaleString()}</span>
-                    </>
-                  )}
-                </button>
-
-                {autoJoinAfterDeposit && (
-                  <p className="text-xs text-ccb-accent text-center flex items-center justify-center gap-1">
-                    <Check className="w-3 h-3" />
-                    You'll be auto-joined to the tournament after deposit confirms
-                  </p>
-                )}
-              </>
-            )
+          {depositSuccess && (
+            <p className="text-xs text-ccb-success flex items-center gap-1">
+              <Check className="w-3 h-3" /> {depositSuccess}
+            </p>
           )}
         </div>
       )}
