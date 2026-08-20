@@ -921,28 +921,30 @@ function BrowseBattleChallenges({
             const canAfford = balance >= c.stake_cents;
             return (
               <div key={c.id} className="group rounded-xl border border-ccb-border bg-ccb-card p-4 transition-all hover:border-ccb-primary/40 hover:shadow-lg hover:shadow-ccb-primary/5">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
-                    <span className="text-sm font-bold text-ccb-primary">
-                      {c.challenger.display_name?.[0]?.toUpperCase() || "?"}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium truncate">{c.challenger.display_name || c.challenger.username}</span>
-                      <span className={`text-xs font-bold ${getRatingColor(c.challenger.rating)}`}>{c.challenger.rating}</span>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
+                      <span className="text-sm font-bold text-ccb-primary">
+                        {c.challenger.display_name?.[0]?.toUpperCase() || "?"}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-ccb-muted">
-                      <span className="flex items-center gap-1"><Coins className="w-3.5 h-3.5" />{formatMKK(c.stake_cents)}</span>
-                      <span>·</span>
-                      <span>Win {formatMKK(payout)}</span>
-                      <span>·</span>
-                      <span>{formatTimeAgo(c.created_at)}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium truncate">{c.challenger.display_name || c.challenger.username}</span>
+                        <span className={`text-xs font-bold shrink-0 ${getRatingColor(c.challenger.rating)}`}>{c.challenger.rating}</span>
+                      </div>
+                      <div className="flex items-center gap-x-1.5 gap-y-0.5 mt-1 text-xs text-ccb-muted flex-wrap">
+                        <span className="flex items-center gap-1 whitespace-nowrap"><Coins className="w-3.5 h-3.5 shrink-0" />{formatMKK(c.stake_cents)}</span>
+                        <span className="text-ccb-border">•</span>
+                        <span className="whitespace-nowrap">Win {formatMKK(payout)}</span>
+                        <span className="text-ccb-border">•</span>
+                        <span className="whitespace-nowrap">{formatTimeAgo(c.created_at)}</span>
+                      </div>
                     </div>
                   </div>
                   <button onClick={() => handleAccept(c.id, c.stake_cents)} disabled={accepting === c.id || !canAfford}
-                    className={`btn-primary px-5 py-2.5 shrink-0 ${!canAfford ? "opacity-50 cursor-not-allowed" : ""}`}>
-                    {accepting === c.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Swords className="w-4 h-4 mr-1.5" /> Accept</>}
+                    className={`btn-primary w-full sm:w-auto px-5 py-2.5 shrink-0 ${!canAfford ? "opacity-50 cursor-not-allowed" : ""}`}>
+                    {accepting === c.id ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : <><Swords className="w-4 h-4 mr-1.5" /> Accept</>}
                   </button>
                 </div>
               </div>

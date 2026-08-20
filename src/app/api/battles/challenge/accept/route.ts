@@ -148,8 +148,58 @@ export async function POST(req: NextRequest) {
 
     await admin.from("battle_challenges").update({ battle_id: battle.id }).eq("id", challengeId);
 
+    // Notify the challenger that their challenge was accepted — this matters
+    // most when they've closed the app/tab and aren't sitting on the waiting
+    // screen anymore. The in-app ActiveBattleWatcher will catch it live if
+    // they're anywhere in the app; this email is the backup if they're fully
+    // gone. Fire-and-forget — never block the acceptor on this.
+    notifyChallengerAccepted(admin, challenge.challenger_id, user.id, challenge.stake_cents).catch(() => {});
+
     return NextResponse.json({ battleId: battle.id });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Server error" }, { status: 500 });
   }
+}
+
+async function notifyChallengerAccepted(
+  admin: ReturnType<typeof createAdminClient>,
+  challengerId: string,
+  acceptorId: string,
+  stakeCents: number
+) {
+  const { data: challengerProfile } = await admin
+    .from("profiles")
+    .select("email, display_name, username")
+    .eq("id", challengerId)
+    .single();
+
+  const { data: acceptorProfile } = await admin
+    .from("profiles")
+    .select("display_name, username, rating")
+    .eq("id", acceptorId)
+    .single();
+
+  if (!challengerProfile?.email) return;
+
+  const acceptorName = acceptorProfile?.display_name || acceptorProfile?.username || "An opponent";
+  const stakeLabel = `MK ${Math.floor(stakeCents / 100).toLocaleString()}`;
+
+  const resendKey = process.env.RESEND_API_KEY;
+  if (!resendKey) return;
+
+  try {
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${resendKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "CCB Alerts <alerts@ccb-github.vercel.app>",
+        to: [challengerProfile.email],
+        subject: `⚔️ ${acceptorName} accepted your ${stakeLabel} battle challenge!`,
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;background:#0a0a0f;color:#e2e8f0;padding:24px;border-radius:12px;border:1px solid #2a2a3a"><div style="text-align:center;margin-bottom:20px"><span style="font-size:32px">⚔️</span><h2 style="color:#7c3aed;margin:8px 0">Your battle is starting!</h2></div><p style="font-size:14px;color:#9ca3af"><strong style="color:#fff">${acceptorName}</strong> (rating ${acceptorProfile?.rating ?? "?"}) accepted your ${stakeLabel} challenge. The board is being set up right now.</p><p style="font-size:13px;color:#9ca3af;margin-top:16px">Your stake is locked and safe — jump back in before your clock starts running out.</p><div style="text-align:center;margin-top:20px"><a href="https://ccb-github.vercel.app/battles" style="background:#7c3aed;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:600">Open Your Battle</a></div></div>`,
+      }),
+    });
+  } catch {}
 }
