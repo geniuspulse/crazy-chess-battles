@@ -168,8 +168,9 @@ export default async function DashboardPage() {
                 const isWhite = game.white_player_id === user!.id;
                 const won = game.winner === (isWhite ? "white" : "black");
                 const drew = game.status === "draw";
-                const result = won ? "W" : drew ? "D" : "L";
-                const resultColor = won ? "text-ccb-success" : drew ? "text-ccb-silver" : "text-ccb-danger";
+                const aborted = game.status === "abort";
+                const result = won ? "W" : drew ? "D" : aborted ? "—" : "L";
+                const resultColor = won ? "text-ccb-success" : drew ? "text-ccb-silver" : aborted ? "text-ccb-muted" : "text-ccb-danger";
 
                 return (
                   <Link

@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveTimeoutForGame } from "@/lib/game/resolve-timeout";
 
-// Client-callable timeout check — verifies the current user is in the game
+// Client-callable timeout check — verifies the current user is in the game.
+// Polled every few seconds by both players' clients while a game is in
+// progress, so whichever side is still connected can detect and resolve
+// an opponent's expired clock (no-show -> abort, mid-game disconnect -> timeout loss).
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
@@ -20,7 +24,7 @@ export async function POST(req: NextRequest) {
 
     const { data: game } = await admin
       .from("games")
-      .select("id, status, turn, white_clock_ms, black_clock_ms, last_move_at, created_at, white_player_id, black_player_id, white_rating, black_rating, rated")
+      .select("id, status, turn, move_count, white_clock_ms, black_clock_ms, last_move_at, created_at, white_player_id, black_player_id, white_rating, black_rating, rated, tournament_id")
       .eq("id", gameId)
       .single();
 
@@ -43,52 +47,8 @@ export async function POST(req: NextRequest) {
     const remainingMs = (currentClockMs ?? 0) - elapsedMs;
 
     if (remainingMs <= 0) {
-      const loser = game.turn;
-      const winner = loser === "white" ? "black" : "white";
-      const loserId = loser === "white" ? game.white_player_id : game.black_player_id;
-      const winnerId = loser === "white" ? game.black_player_id : game.white_player_id;
-      const loserRating = loser === "white" ? game.white_rating : game.black_rating;
-      const winnerRating = loser === "white" ? game.black_rating : game.white_rating;
-
-      await admin.from("games").update({
-        status: "timeout",
-        winner: winner,
-        ended_at: new Date().toISOString(),
-        [`${loser}_clock_ms`]: 0,
-      }).eq("id", gameId);
-
-      if (game.rated && loserRating && winnerRating) {
-        const expectedWinner = 1 / (1 + Math.pow(10, (loserRating - winnerRating) / 400));
-        const K = 32;
-        const winnerChange = Math.round(K * (1 - expectedWinner));
-        const loserChange = -winnerChange;
-
-        await admin.from("games").update({
-          white_rating_change: loser === "white" ? loserChange : winnerChange,
-          black_rating_change: loser === "black" ? loserChange : winnerChange,
-        }).eq("id", gameId);
-
-        const { data: winnerProfile } = await admin.from("profiles").select("wins, games_played, rating").eq("id", winnerId).single();
-        const { data: loserProfile } = await admin.from("profiles").select("losses, games_played, rating").eq("id", loserId).single();
-
-        if (winnerProfile) {
-          await admin.from("profiles").update({
-            rating: winnerRating + winnerChange,
-            wins: (winnerProfile.wins ?? 0) + 1,
-            games_played: (winnerProfile.games_played ?? 0) + 1,
-          }).eq("id", winnerId);
-        }
-
-        if (loserProfile) {
-          await admin.from("profiles").update({
-            rating: loserRating + loserChange,
-            losses: (loserProfile.losses ?? 0) + 1,
-            games_played: (loserProfile.games_played ?? 0) + 1,
-          }).eq("id", loserId);
-        }
-      }
-
-      return NextResponse.json({ timedOut: true, status: "timeout", winner });
+      const result = await resolveTimeoutForGame(admin, game);
+      return NextResponse.json({ timedOut: true, status: result.status, winner: result.winner });
     }
 
     return NextResponse.json({ timedOut: false, status: "playing" });

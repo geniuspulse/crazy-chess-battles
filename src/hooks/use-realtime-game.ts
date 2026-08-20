@@ -91,7 +91,7 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
         if (data.timedOut) {
           setGame((prev) => ({
             ...prev,
-            status: "timeout",
+            status: data.status || "timeout", // "timeout" (decisive loss) or "abort" (no-show, no rating hit)
             winner: data.winner,
           }));
         }

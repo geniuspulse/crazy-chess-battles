@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { detectOperator } from "@/lib/operator";
 import {
   Swords, Clock, Zap, Link2, RefreshCw, Loader2, Users, Star, Coins, ChevronRight,
+  Wallet, Smartphone, Check, AlertCircle, TrendingUp, X,
 } from "lucide-react";
 
 interface FreeChallenge {
@@ -32,9 +34,20 @@ const TC_ICONS: Record<string, any> = {
   bullet: Zap, blitz3: Zap, blitz: Zap, rapid: Clock, rapid15: Clock, classical: Clock,
 };
 
+const PLATFORM_FEE_PCT = 10; // matches DEFAULT_CONFIG
+
 function formatMKK(cents: number): string {
   return `MK ${Math.floor(cents / 100).toLocaleString()}`;
 }
+
+function calcWinnings(stakeCents: number): number {
+  const pot = stakeCents * 2;
+  const fee = Math.round(pot * (PLATFORM_FEE_PCT / 100));
+  return pot - fee;
+}
+
+// Quick deposit amounts that make sense for battle stakes
+const QUICK_DEPOSIT_AMOUNTS = [500, 1000, 2500, 5000, 10000];
 
 export default function ChallengesPage() {
   const router = useRouter();
@@ -44,6 +57,37 @@ export default function ChallengesPage() {
   const [accepting, setAccepting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string>("");
+  const [balance, setBalance] = useState(0);
+  const [balanceLoading, setBalanceLoading] = useState(true);
+
+  // Inline deposit flow state
+  const [depositChallengeId, setDepositChallengeId] = useState<string | null>(null);
+  const [depositAmount, setDepositAmount] = useState(1000);
+  const [depositPhone, setDepositPhone] = useState("");
+  const [depositLoading, setDepositLoading] = useState(false);
+  const [depositPolling, setDepositPolling] = useState(false);
+  const [depositError, setDepositError] = useState<string | null>(null);
+  const [depositSuccess, setDepositSuccess] = useState<string | null>(null);
+  const [pendingChargeId, setPendingChargeId] = useState<string | null>(null);
+
+  const loadBalance = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      setUserEmail(user.email || "");
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("wallet_balance_cents, phone")
+        .eq("id", user.id)
+        .single();
+      if (profile) {
+        setBalance(profile.wallet_balance_cents ?? 0);
+        if (profile.phone) setDepositPhone(profile.phone);
+      }
+    } catch {}
+    setBalanceLoading(false);
+  }, [supabase]);
 
   const fetchChallenges = useCallback(async () => {
     setLoading(true);
@@ -52,7 +96,6 @@ export default function ChallengesPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) setCurrentUserId(user.id);
 
-      // Fetch free challenges and battle challenges in parallel
       const [freeRes, battleRes] = await Promise.all([
         supabase
           .from("challenges")
@@ -71,7 +114,6 @@ export default function ChallengesPage() {
       if (freeRes.error) throw freeRes.error;
       if (battleRes.error) throw battleRes.error;
 
-      // Collect all challenger IDs from both lists
       const challengerIds = new Set<string>();
       (freeRes.data || []).forEach((c: any) => challengerIds.add(c.challenger_id));
       (battleRes.data || []).forEach((c: any) => challengerIds.add(c.challenger_id));
@@ -82,7 +124,6 @@ export default function ChallengesPage() {
         return;
       }
 
-      // Fetch profiles
       const { data: profiles } = await supabase
         .from("profiles")
         .select("id, username, display_name, rating")
@@ -90,7 +131,6 @@ export default function ChallengesPage() {
 
       const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
 
-      // Build free challenge list
       const freeChallenges: FreeChallenge[] = (freeRes.data || [])
         .filter((c: any) => c.challenger_id !== user?.id)
         .map((c: any) => ({
@@ -108,7 +148,6 @@ export default function ChallengesPage() {
           },
         }));
 
-      // Build battle challenge list
       const battleChallenges: BattleChallenge[] = (battleRes.data || [])
         .filter((c: any) => c.challenger_id !== user?.id)
         .map((c: any) => ({
@@ -123,7 +162,6 @@ export default function ChallengesPage() {
           },
         }));
 
-      // Merge and sort by created_at desc
       const all = [...freeChallenges, ...battleChallenges].sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
@@ -137,6 +175,7 @@ export default function ChallengesPage() {
 
   useEffect(() => {
     fetchChallenges();
+    loadBalance();
 
     const channel = supabase
       .channel("all-challenges-list")
@@ -147,12 +186,59 @@ export default function ChallengesPage() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [fetchChallenges, supabase]);
+  }, [fetchChallenges, loadBalance, supabase]);
 
-  // Optimistic removal when accepting
   const removeChallenge = (id: string) => {
     setChallenges((prev) => prev.filter((c) => c.id !== id));
   };
+
+  // Poll for deposit payment confirmation
+  useEffect(() => {
+    if (!pendingChargeId) return;
+    setDepositPolling(true);
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/payments/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chargeId: pendingChargeId }),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+          const amt = Math.floor(data.amount / 100).toLocaleString();
+          setDepositSuccess(`MWK ${amt} added to your wallet!`);
+          setDepositPolling(false);
+          setPendingChargeId(null);
+          clearInterval(interval);
+          setBalance((prev) => prev + data.amount);
+          // Auto-close deposit panel after a short delay
+          setTimeout(() => {
+            setDepositChallengeId(null);
+            setDepositSuccess(null);
+          }, 2000);
+        } else if (data.status === "failed") {
+          setDepositError("Payment failed or timed out. Please try again.");
+          setDepositPolling(false);
+          setPendingChargeId(null);
+          clearInterval(interval);
+        }
+      } catch {}
+    }, 5000);
+
+    const timeout = setTimeout(() => {
+      clearInterval(interval);
+      setDepositPolling(false);
+      if (pendingChargeId) {
+        setDepositError("Payment verification timed out. If you completed the payment, your balance will update shortly.");
+        setPendingChargeId(null);
+      }
+    }, 180000);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [pendingChargeId]);
 
   const handleAcceptFree = async (challengeId: string) => {
     setAccepting(challengeId);
@@ -173,7 +259,17 @@ export default function ChallengesPage() {
     }
   };
 
-  const handleAcceptBattle = async (challengeId: string) => {
+  const handleAcceptBattle = async (challengeId: string, stakeCents: number) => {
+    // Check balance client-side first for a snappy UX
+    if (balance < stakeCents) {
+      setDepositChallengeId(challengeId);
+      // Pre-fill the deposit amount to cover the stake (rounded to nearest quick option)
+      const needed = Math.ceil(stakeCents / 100);
+      const quickMatch = QUICK_DEPOSIT_AMOUNTS.find((a) => a >= needed);
+      setDepositAmount(quickMatch || needed);
+      return;
+    }
+
     setAccepting(challengeId);
     setError(null);
     try {
@@ -183,10 +279,21 @@ export default function ChallengesPage() {
         body: JSON.stringify({ challengeId }),
       });
       const data = await res.json();
+
+      // Server says insufficient funds (balance changed server-side)
+      if (res.status === 402 && data.insufficientFunds) {
+        setAccepting(null);
+        setDepositChallengeId(challengeId);
+        setBalance(data.balanceCents ?? balance);
+        const needed = Math.ceil((data.requiredCents ?? stakeCents) / 100);
+        const quickMatch = QUICK_DEPOSIT_AMOUNTS.find((a) => a >= needed);
+        setDepositAmount(quickMatch || needed);
+        return;
+      }
+
       if (!res.ok || data.error) throw new Error(data.error || "Failed to accept battle");
       removeChallenge(challengeId);
 
-      // Start the battle game
       const startRes = await fetch("/api/battles/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -197,7 +304,6 @@ export default function ChallengesPage() {
         router.push(`/game/${startData.gameId}`);
         return;
       }
-      // Retry once
       await new Promise((r) => setTimeout(r, 1200));
       const retryRes = await fetch("/api/battles/start", {
         method: "POST",
@@ -213,6 +319,41 @@ export default function ChallengesPage() {
     } catch (e: any) {
       setError(e.message || "Failed to accept");
       setAccepting(null);
+    }
+  };
+
+  const handleDeposit = async () => {
+    setDepositLoading(true);
+    setDepositError(null);
+    setDepositSuccess(null);
+
+    if (!depositPhone || depositPhone.length < 9) {
+      setDepositError("Enter a valid phone number (e.g., 0991234567)");
+      setDepositLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/payments/deposit/mobile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amountCents: depositAmount * 100,
+          phone: depositPhone,
+          operatorRefId: detectOperator(depositPhone),
+          email: userEmail,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Payment failed. Please try again.");
+      }
+      setPendingChargeId(data.chargeId);
+      setDepositSuccess("Check your phone to authorize the payment. Waiting for confirmation...");
+    } catch (err: any) {
+      setDepositError(err.message && err.message.length < 200 ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setDepositLoading(false);
     }
   };
 
@@ -249,10 +390,27 @@ export default function ChallengesPage() {
             {freeCount} free · {battleCount} battle
           </p>
         </div>
-        <button onClick={fetchChallenges} className="btn-secondary px-3 py-2" title="Refresh">
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Wallet balance pill */}
+          {!balanceLoading && (
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg bg-ccb-surface border border-ccb-border text-sm">
+              <Wallet className="w-4 h-4 text-ccb-primary" />
+              <span className="font-semibold">{formatMKK(balance)}</span>
+            </div>
+          )}
+          <button onClick={fetchChallenges} className="btn-secondary px-3 py-2" title="Refresh">
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
+
+      {/* Mobile balance pill */}
+      {!balanceLoading && (
+        <div className="sm:hidden flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-ccb-surface border border-ccb-border text-sm">
+          <Wallet className="w-4 h-4 text-ccb-primary" />
+          <span className="font-semibold">{formatMKK(balance)}</span>
+        </div>
+      )}
 
       {error && (
         <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{error}</div>
@@ -285,6 +443,10 @@ export default function ChallengesPage() {
           {challenges.map((c) => {
             const isBattle = c.type === "battle";
             const acceptingThis = accepting === c.id;
+            const winnings = isBattle ? calcWinnings((c as BattleChallenge).stake_cents) : 0;
+            const stake = isBattle ? (c as BattleChallenge).stake_cents : 0;
+            const canAfford = !isBattle || balance >= stake;
+            const showDepositPanel = isBattle && depositChallengeId === c.id;
 
             return (
               <div
@@ -323,7 +485,11 @@ export default function ChallengesPage() {
                         {isBattle ? (
                           <>
                             <span className="flex items-center gap-1 whitespace-nowrap">
-                              <Coins className="w-3.5 h-3.5 shrink-0" />{formatMKK(c.stake_cents)}
+                              <Coins className="w-3.5 h-3.5 shrink-0" />Stake: {formatMKK(stake)}
+                            </span>
+                            <span className="text-ccb-border">•</span>
+                            <span className="flex items-center gap-1 whitespace-nowrap text-ccb-success font-semibold">
+                              <TrendingUp className="w-3.5 h-3.5 shrink-0" />Win: {formatMKK(winnings)}
                             </span>
                             <span className="text-ccb-border">•</span>
                             <span className="whitespace-nowrap">{formatTimeAgo(c.created_at)}</span>
@@ -347,19 +513,129 @@ export default function ChallengesPage() {
 
                   {/* Accept button */}
                   <button
-                    onClick={() => isBattle ? handleAcceptBattle(c.id) : handleAcceptFree(c.id)}
+                    onClick={() => isBattle ? handleAcceptBattle(c.id, stake) : handleAcceptFree(c.id)}
                     disabled={acceptingThis}
-                    className={`btn-primary w-full sm:w-auto px-5 py-2.5 shrink-0 ${
-                      isBattle ? "" : ""
-                    }`}
+                    className={`btn-primary w-full sm:w-auto px-5 py-2.5 shrink-0`}
                   >
                     {acceptingThis ? (
                       <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+                    ) : !canAfford ? (
+                      <><Wallet className="w-4 h-4 mr-1.5" /> Deposit & Play</>
                     ) : (
                       <><Swords className="w-4 h-4 mr-1.5" /> Accept</>
                     )}
                   </button>
                 </div>
+
+                {/* Insufficient funds warning bar */}
+                {isBattle && !canAfford && !showDepositPanel && (
+                  <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>
+                      You need {formatMKK(stake)} to accept. Your balance: {formatMKK(balance)}.
+                    </span>
+                    <button
+                      onClick={() => {
+                        setDepositChallengeId(c.id);
+                        const needed = Math.ceil(stake / 100);
+                        const quickMatch = QUICK_DEPOSIT_AMOUNTS.find((a) => a >= needed);
+                        setDepositAmount(quickMatch || needed);
+                      }}
+                      className="ml-auto font-semibold underline hover:text-amber-300 whitespace-nowrap"
+                    >
+                      Deposit now
+                    </button>
+                  </div>
+                )}
+
+                {/* Inline deposit panel */}
+                {showDepositPanel && (
+                  <div className="mt-3 p-4 rounded-lg bg-ccb-surface border border-ccb-primary/30 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-semibold flex items-center gap-1.5">
+                        <Smartphone className="w-4 h-4 text-ccb-primary" /> Deposit via Mobile Money
+                      </h4>
+                      <button
+                        onClick={() => { setDepositChallengeId(null); setDepositError(null); setDepositSuccess(null); }}
+                        className="text-ccb-muted hover:text-ccb-text p-1"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <p className="text-xs text-ccb-muted">
+                      You need {formatMKK(stake)} to accept this battle. Deposit to your wallet and the battle is yours.
+                    </p>
+
+                    {/* Quick amounts */}
+                    <div className="flex flex-wrap gap-2">
+                      {QUICK_DEPOSIT_AMOUNTS.map((amt) => (
+                        <button
+                          key={amt}
+                          onClick={() => setDepositAmount(amt)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            depositAmount === amt
+                              ? "bg-ccb-primary text-white"
+                              : "bg-ccb-card border border-ccb-border text-ccb-muted hover:text-ccb-text"
+                          }`}
+                        >
+                          MK {amt.toLocaleString()}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Phone input */}
+                    <div>
+                      <label className="text-xs text-ccb-muted mb-1 block">Phone Number</label>
+                      <input
+                        type="tel"
+                        value={depositPhone}
+                        onChange={(e) => setDepositPhone(e.target.value)}
+                        placeholder="0991234567"
+                        className="input-field w-full"
+                        disabled={depositPolling}
+                      />
+                    </div>
+
+                    {/* Deposit summary */}
+                    <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-ccb-card text-sm">
+                      <span className="text-ccb-muted">You deposit</span>
+                      <span className="font-semibold">{formatMKK(depositAmount * 100)}</span>
+                    </div>
+
+                    {depositError && (
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        {depositError}
+                      </div>
+                    )}
+
+                    {depositSuccess && (
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-ccb-success/10 border border-ccb-success/30 text-ccb-success text-xs">
+                        <Check className="w-4 h-4 shrink-0" />
+                        {depositSuccess}
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleDeposit}
+                      disabled={depositLoading || depositPolling}
+                      className="btn-primary w-full py-2.5"
+                    >
+                      {depositLoading ? (
+                        <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+                      ) : depositPolling ? (
+                        <><Loader2 className="w-4 h-4 animate-spin mr-1.5" /> Waiting for confirmation...</>
+                      ) : (
+                        <><Smartphone className="w-4 h-4 mr-1.5" /> Deposit {formatMKK(depositAmount * 100)}</>
+                      )}
+                    </button>
+
+                    <p className="text-[10px] text-ccb-muted text-center">
+                      You'll receive a mobile money prompt on your phone to authorize the payment.
+                    </p>
+                  </div>
+                )}
               </div>
             );
           })}

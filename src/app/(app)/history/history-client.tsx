@@ -53,9 +53,10 @@ export default function HistoryClient({ profile, games, opponentMap, currentUser
       const isWhite = g.white_player_id === currentUserId;
       const won = g.winner === (isWhite ? "white" : "black");
       const drew = g.status === "draw" || g.winner === "draw";
+      const aborted = g.status === "abort";
 
       if (filter === "wins") return won;
-      if (filter === "losses") return !won && !drew && g.status !== "playing";
+      if (filter === "losses") return !won && !drew && !aborted && g.status !== "playing";
       if (filter === "draws") return drew;
       if (filter === "tournaments") return !!g.tournament_id;
       if (filter === "bot") return isBotGame(g) && g.status !== "playing";
@@ -64,7 +65,9 @@ export default function HistoryClient({ profile, games, opponentMap, currentUser
   }, [games, filter, currentUserId]);
 
   const stats = useMemo(() => {
-    const completed = games.filter((g) => g.status !== "playing");
+    // Aborted games (opponent never showed up) don't count as anything —
+    // no win, no loss, no draw — same as they never happened.
+    const completed = games.filter((g) => g.status !== "playing" && g.status !== "abort");
     const wins = completed.filter((g) => {
       const isWhite = g.white_player_id === currentUserId;
       return g.winner === (isWhite ? "white" : "black");
@@ -92,6 +95,7 @@ export default function HistoryClient({ profile, games, opponentMap, currentUser
     const drew = g.status === "draw" || g.winner === "draw";
 
     if (g.status === "playing") return { label: "Live", color: "text-ccb-accent", bg: "bg-ccb-accent/10" };
+    if (g.status === "abort") return { label: "Aborted", color: "text-ccb-muted", bg: "bg-ccb-muted/10" };
     if (won) return { label: "Win", color: "text-ccb-success", bg: "bg-ccb-success/10" };
     if (drew) return { label: "Draw", color: "text-ccb-muted", bg: "bg-ccb-muted/10" };
 

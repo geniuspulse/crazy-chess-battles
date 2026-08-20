@@ -34,6 +34,7 @@ const STATUS_LABELS: Record<string, string> = {
   draw: "Draw",
   resign: "Resignation",
   timeout: "Time out",
+  abort: "Game Aborted — opponent no-show",
 };
 
 type SheetType = "moves" | "theme" | "chat" | null;
@@ -88,6 +89,19 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
     const interval = setInterval(() => setClockTick((t) => t + 1), 1000);
     return () => clearInterval(interval);
   }, [gameEnded]);
+
+  // Poll the server for an expired opponent clock. This is what actually
+  // resolves a game when the other player disappears — either they never
+  // showed up at all (game gets aborted, no rating hit) or they went
+  // silent mid-game (their clock runs out and it's a normal timeout loss).
+  // Spectators can't call this (they're not a player in the game).
+  useEffect(() => {
+    if (gameEnded || isSpectator) return;
+    const interval = setInterval(() => {
+      checkTimeout();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [gameEnded, isSpectator, checkTimeout]);
   const myRatingChange = isWhite ? game.white_rating_change : game.black_rating_change;
 
   // Derived: captured pieces, check square, board highlights

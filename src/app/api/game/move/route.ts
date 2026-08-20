@@ -5,6 +5,7 @@ import { validateAndApplyMove } from "@/lib/game/chess-engine";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { awardBerries } from "@/lib/berry/award";
 import { settleBattle } from "@/lib/battles/settle";
+import { resolveTimeoutForGame } from "@/lib/game/resolve-timeout";
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
     // Load current game state
     const { data: game } = await supabase
       .from("games")
-      .select("id, white_player_id, black_player_id, fen, pgn, turn, status, move_count, white_clock_ms, black_clock_ms, last_move_at, increment_seconds, tournament_id, created_at")
+      .select("id, white_player_id, black_player_id, fen, pgn, turn, status, move_count, white_clock_ms, black_clock_ms, last_move_at, increment_seconds, tournament_id, created_at, white_rating, black_rating, rated")
       .eq("id", gameId)
       .single();
 
@@ -56,16 +57,16 @@ export async function POST(req: NextRequest) {
     const remainingMs = (currentClockMs ?? 0) - elapsedMs;
 
     if (remainingMs <= 0) {
-      // Player's clock expired — they lose on time
+      // Player's clock expired — they lose on time (or the game is
+      // aborted if nobody ever made a first move — see resolveTimeoutForGame)
       const admin = createAdminClient();
-      const winner = game.turn === "white" ? "black" : "white";
-      await admin.from("games").update({
-        status: "timeout",
-        winner: winner,
-        ended_at: new Date().toISOString(),
-        [`${game.turn}_clock_ms`]: 0,
-      }).eq("id", gameId);
-      return NextResponse.json({ error: "Your clock has expired", gameEnded: true, status: "timeout", winner }, { status: 400 });
+      const result = await resolveTimeoutForGame(admin, game);
+      return NextResponse.json({
+        error: result.status === "abort" ? "Game aborted — no moves were made in time" : "Your clock has expired",
+        gameEnded: true,
+        status: result.status,
+        winner: result.winner,
+      }, { status: 400 });
     }
 
     //     // Validate and apply the move
