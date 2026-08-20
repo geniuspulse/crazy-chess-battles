@@ -81,6 +81,8 @@ export default function HistoryClient({ profile, games, opponentMap, currentUser
     if (tc === "blitz") return `Blitz ${g.initial_minutes}${inc}`;
     if (tc === "rapid") return `Rapid ${g.initial_minutes}${inc}`;
     if (tc === "classical") return `Classical ${g.initial_minutes}${inc}`;
+    if (tc === "battle") return `Battle ${g.initial_minutes}${inc}`;
+    if (tc === "armageddon") return `Armageddon ${g.initial_minutes}`;
     return `${g.initial_minutes}${inc}`;
   };
 

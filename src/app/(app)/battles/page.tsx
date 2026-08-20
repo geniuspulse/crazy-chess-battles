@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Swords, Clock, Coins, Zap, AlertCircle, Loader2, Link2, Copy, Check } from "lucide-react";
+import { Swords, Clock, Coins, Zap, AlertCircle, Loader2, Link2, Copy, Check, RefreshCw, XCircle } from "lucide-react";
 
 const DEFAULT_STAKES = [50000, 100000, 250000, 500000, 1000000];
 
@@ -40,10 +40,66 @@ export default function BattlesPage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const searchIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const [checkingActive, setCheckingActive] = useState(true);
+  const [activeBattle, setActiveBattle] = useState<{
+    battleId: string;
+    gameId?: string;
+    status: string;
+    stuck?: boolean;
+    stakeCents?: number;
+  } | null>(null);
+  const [cancellingStuck, setCancellingStuck] = useState(false);
+
+  const checkActiveBattle = useCallback(async () => {
+    try {
+      const res = await fetch("/api/battles/active");
+      if (!res.ok) {
+        setCheckingActive(false);
+        return;
+      }
+      const data = await res.json();
+      if (data.active) {
+        setActiveBattle(data);
+        if (data.gameId && data.status === "playing") {
+          router.push(`/game/${data.gameId}`);
+          return;
+        }
+      } else {
+        setActiveBattle(null);
+      }
+    } catch {}
+    setCheckingActive(false);
+  }, [router]);
+
+  const handleCancelStuck = async () => {
+    if (!activeBattle) return;
+    setCancellingStuck(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/battles/cancel-stuck", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ battleId: activeBattle.battleId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to cancel");
+        setCancellingStuck(false);
+        return;
+      }
+      setActiveBattle(null);
+      loadProfile();
+    } catch {
+      setError("Failed to cancel");
+    }
+    setCancellingStuck(false);
+  };
+
   useEffect(() => {
     loadConfig();
     loadProfile();
-  }, []);
+    checkActiveBattle();
+  }, [checkActiveBattle]);
 
   const loadConfig = async () => {
     try {
@@ -248,8 +304,66 @@ export default function BattlesPage() {
         </div>
       )}
 
+      {/* Blocking: user already has an active battle */}
+      {checkingActive && (
+        <div className="flex flex-col items-center justify-center py-16">
+          <Loader2 className="w-8 h-8 text-ccb-primary animate-spin mb-3" />
+          <p className="text-sm text-ccb-muted">Checking for active battles...</p>
+        </div>
+      )}
+
+      {!checkingActive && activeBattle && (
+        <div className="text-center py-8">
+          <Swords className="w-10 h-10 text-ccb-primary mx-auto mb-3" />
+          <h2 className="text-lg font-bold text-ccb-text mb-1">You have an active battle</h2>
+          <p className="text-sm text-ccb-muted mb-6">
+            {activeBattle.stuck
+              ? "It failed to start and got stuck — you can cancel it for a full refund."
+              : "Finish it before starting a new one."}
+          </p>
+
+          <div className="flex flex-col items-center gap-3">
+            {activeBattle.gameId ? (
+              <button
+                onClick={() => router.push(`/game/${activeBattle.gameId}`)}
+                className="px-8 py-3.5 rounded-xl font-bold text-white bg-ccb-primary hover:bg-ccb-primary/90 transition-colors inline-flex items-center gap-2"
+              >
+                <Swords className="w-4 h-4" />
+                Resume Game
+              </button>
+            ) : activeBattle.stuck ? (
+              <>
+                <button
+                  onClick={checkActiveBattle}
+                  className="px-8 py-3.5 rounded-xl font-semibold text-ccb-text bg-ccb-surface border border-ccb-border hover:border-ccb-primary/50 transition-colors inline-flex items-center gap-2"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Try Again
+                </button>
+                <button
+                  onClick={handleCancelStuck}
+                  disabled={cancellingStuck}
+                  className="px-8 py-3.5 rounded-xl font-semibold text-red-400 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 transition-colors disabled:opacity-50 inline-flex items-center gap-2"
+                >
+                  {cancellingStuck ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                  {cancellingStuck ? "Cancelling..." : "Cancel & Refund"}
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={checkActiveBattle}
+                className="px-8 py-3.5 rounded-xl font-semibold text-ccb-text bg-ccb-surface border border-ccb-border hover:border-ccb-primary/50 transition-colors inline-flex items-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Refresh
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* State: Select stake */}
-      {state === "select" && (
+      {!checkingActive && !activeBattle && state === "select" && (
         <div>
           <p className="text-sm font-medium text-ccb-muted mb-3 text-center">Choose your stake:</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

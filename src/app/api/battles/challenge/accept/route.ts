@@ -42,6 +42,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Challenge has expired" }, { status: 400 });
     }
 
+    // Idempotent retry: this user already accepted this challenge (their stake is
+    // already locked and the battle row already exists) — e.g. a previous attempt
+    // got past accept but failed at the game-creation step. Don't re-claim or
+    // re-debit, just hand back the existing battleId so the client can retry /start.
+    if (challenge.status === "accepted" && challenge.acceptor_id === user.id && challenge.battle_id) {
+      return NextResponse.json({ battleId: challenge.battle_id });
+    }
+
     // Check acceptor balance BEFORE claiming (so we don't lock a challenge we can't fulfill)
     const { data: acceptorProfile } = await admin
       .from("profiles")

@@ -182,15 +182,27 @@ export default function BattleChallengeAccept({
         throw new Error(data.error || "Failed to accept challenge");
       }
 
-      // Battle created — now start the actual chess game
-      const startRes = await fetch("/api/battles/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ battleId: data.battleId }),
-      });
-      const startData = await startRes.json();
-      if (!startRes.ok || !startData.gameId) {
-        throw new Error(startData.error || "Failed to start the game");
+      // Battle created — now start the actual chess game.
+      // Retry once on transient failure before surfacing an error — accept is
+      // idempotent so re-calling /start with the same battleId is always safe.
+      const tryStart = async () => {
+        const startRes = await fetch("/api/battles/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ battleId: data.battleId }),
+        });
+        return { ok: startRes.ok, data: await startRes.json() };
+      };
+
+      let { ok, data: startData } = await tryStart();
+      if (!ok || !startData.gameId) {
+        await new Promise((r) => setTimeout(r, 1200));
+        ({ ok, data: startData } = await tryStart());
+      }
+      if (!ok || !startData.gameId) {
+        throw new Error(
+          (startData.error || "Failed to start the game") + " Your stake is safely locked — tap Accept Battle to try again."
+        );
       }
 
       router.push(`/game/${startData.gameId}`);
