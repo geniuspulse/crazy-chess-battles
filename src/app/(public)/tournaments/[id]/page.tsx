@@ -199,7 +199,7 @@ export default async function TournamentDetailPage({
               </span>
             </div>
             {tournament.description && (
-              <p className="text-sm text-ccb-muted max-w-2xl">{tournament.description}</p>
+              <p className="text-sm text-ccb-muted max-w-2xl whitespace-pre-wrap">{tournament.description}</p>
             )}
           </div>
 
@@ -432,7 +432,8 @@ export default async function TournamentDetailPage({
         </div>
       )}
 
-            {/* Standings / Participant List */}
+            {/* Standings / Participant List — hidden pre-tournament so players can't scout the field */}
+      {tournament.status !== "upcoming" && (
       <div className="card space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold flex items-center gap-2">
@@ -566,6 +567,7 @@ export default async function TournamentDetailPage({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
