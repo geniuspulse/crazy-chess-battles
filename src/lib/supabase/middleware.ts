@@ -29,14 +29,17 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  // Gracefully handle auth failures (e.g., during build)
-  let user = null;
+  // Use getSession() instead of getUser() — reads from cookie locally,
+  // no network round trip. getUser() makes a call to Supabase on every request.
+  // The server components in the layout will call getUser() for the actual user data.
+  let session = null;
   try {
-    const result = await supabase.auth.getUser();
-    user = result.data.user;
+    const result = await supabase.auth.getSession();
+    session = result.data.session;
   } catch {
     return supabaseResponse;
   }
+  const user = session?.user ?? null;
 
   // Redirect to login if not authenticated and trying to access protected routes
   const protectedRoutes = ["/dashboard", "/play", "/wallet", "/history", "/admin"];

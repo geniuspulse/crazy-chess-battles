@@ -12,28 +12,35 @@ export default async function WalletPage() {
     redirect("/login?redirect=/wallet");
   }
 
-  // Use select("*") — PostgREST caches schema and may not know about
-  // recently added columns like berry_balance. select("*") returns all
-  // columns PostGREST knows about without validating individual names.
-  const { data: profile } = await supabase
+  // Parallelize profile + deposits queries
+  let deposits: any[] = [];
+  const profilePromise = supabase
     .from("profiles")
     .select("*")
     .eq("id", user.id)
     .single();
 
-  // Gracefully handle missing deposits table — don't crash the whole page
-  let deposits: any[] = [];
-  try {
-    const { data, error } = await supabase
-      .from("deposits")
-      .select("id, amount_cents, method, status, created_at, charge_id")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(20);
+  const depositsPromise = supabase
+    .from("deposits")
+    .select("id, amount_cents, method, status, created_at, charge_id")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(20);
 
-    if (!error && data) deposits = data;
+  // Deposits query might fail if table doesn't exist — wrap in try/catch
+  let profileRes: any, depositsRes: any = null;
+  try {
+    [profileRes, depositsRes] = await Promise.all([
+      profilePromise,
+      depositsPromise,
+    ]);
   } catch {
-    // deposits table may not exist yet — page still works without history
+    profileRes = await profilePromise;
+  }
+
+  const profile = profileRes?.data;
+  if (depositsRes && !depositsRes.error && depositsRes.data) {
+    deposits = depositsRes.data;
   }
 
   return (

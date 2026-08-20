@@ -15,6 +15,7 @@ export default async function DashboardPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  // Fetch profile first (needed for rating init logic)
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
@@ -31,19 +32,24 @@ export default async function DashboardPage() {
     profile.rating = LEVEL_RATINGS[chessLevel];
   }
 
-  const { data: recentGames } = await supabase
-    .from("games")
-    .select("id, status, winner, time_control, created_at, ended_at, white_player_id, black_player_id, white_player_id, black_player_id")
-    .or(`white_player_id.eq.${user!.id},black_player_id.eq.${user!.id}`)
-    .order("created_at", { ascending: false })
-    .limit(5);
+  // Parallelize independent queries
+  const [recentGamesRes, activeTournamentsRes] = await Promise.all([
+    supabase
+      .from("games")
+      .select("id, status, winner, time_control, created_at, ended_at, white_player_id, black_player_id")
+      .or(`white_player_id.eq.${user!.id},black_player_id.eq.${user!.id}`)
+      .order("created_at", { ascending: false })
+      .limit(5),
+    supabase
+      .from("tournaments")
+      .select("id, name, type, status, starts_at, entry_fee_cents")
+      .eq("status", "upcoming")
+      .order("starts_at", { ascending: true })
+      .limit(3),
+  ]);
 
-  const { data: activeTournaments } = await supabase
-    .from("tournaments")
-    .select("id, name, type, status, starts_at, entry_fee_cents")
-    .eq("status", "upcoming")
-    .order("starts_at", { ascending: true })
-    .limit(3);
+  const recentGames = recentGamesRes.data;
+  const activeTournaments = activeTournamentsRes.data;
 
   const winRate = profile?.games_played
     ? Math.round(((profile.wins ?? 0) / profile.games_played) * 100)

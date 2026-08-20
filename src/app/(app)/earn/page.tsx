@@ -19,24 +19,23 @@ export default async function EarnPage() {
 
   const admin = createAdminClient();
 
-  // Check if the user has completed a game (for "Play Your First Game")
-  const { count: gamesCount } = await admin
-    .from("games")
-    .select("id", { count: "exact", head: true })
-    .or(`white_player_id.eq.${user.id},black_player_id.eq.${user.id}`)
-    .not("status", "eq", "playing");
+  // Parallelize independent admin queries
+  const [gamesCountRes, claimedRowsRes] = await Promise.all([
+    admin
+      .from("games")
+      .select("id", { count: "exact", head: true })
+      .or(`white_player_id.eq.${user.id},black_player_id.eq.${user.id}`)
+      .not("status", "eq", "playing"),
+    admin
+      .from("engagement_log")
+      .select("action")
+      .eq("user_id", user.id)
+      .in("action", ["share_app", "whatsapp_status", "first_game", "profile_complete"]),
+  ]);
 
-  const hasPlayedGame = (gamesCount ?? 0) > 0;
-
-  // Profile completeness (for "Complete Your Profile")
+  const hasPlayedGame = (gamesCountRes.count ?? 0) > 0;
   const profileComplete = Boolean(profile?.username && profile?.display_name && profile?.avatar_url);
-
-  // Already-claimed one-time actions, so state survives a refresh
-  const { data: claimedRows } = await admin
-    .from("engagement_log")
-    .select("action")
-    .eq("user_id", user.id)
-    .in("action", ["share_app", "whatsapp_status", "first_game", "profile_complete"]);
+  const claimedRows = claimedRowsRes.data;
 
   const claimedActions = (claimedRows ?? []).map((r: any) => r.action);
 
