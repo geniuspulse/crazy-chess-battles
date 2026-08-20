@@ -1,10 +1,22 @@
 import Link from "next/link";
 import { Trophy, Swords, TrendingUp, Zap, Wallet, Crown, ArrowRight, Check } from "lucide-react";
 import HomeStats from "./home-stats";
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+
+export const dynamic = "force-dynamic";
 
 export default async function LandingPage({ searchParams }: { searchParams: Promise<{ ref?: string }> }) {
   const { ref } = await searchParams;
   const refParam = ref ? `?ref=${ref}` : "";
+
+  // Redirect authenticated users to dashboard (unless they have a ref param — they might be sharing)
+  const supabase = await createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.user && !ref) {
+    redirect("/dashboard");
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       {ref && (
@@ -24,7 +36,7 @@ export default async function LandingPage({ searchParams }: { searchParams: Prom
             <span className="font-bold text-sm sm:text-lg truncate">Crazy Chess Battles</span>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <Link href="/login" className="btn-ghost text-sm">Log in</Link>
+            <Link href="/leaderboard" className="btn-ghost text-sm">Leaderboard</Link>
             <Link href={`/signup${refParam}`} className="btn-primary text-sm px-3 sm:px-4">Sign up</Link>
           </div>
         </div>
@@ -60,7 +72,7 @@ export default async function LandingPage({ searchParams }: { searchParams: Prom
             </div>
             <div className="flex items-center gap-1.5">
               <Check className="w-3.5 h-3.5 text-ccb-success" />
-              <span>Instant payouts</span>
+              <span>Instant payout</span>
             </div>
             <div className="flex items-center gap-1.5">
               <Check className="w-3.5 h-3.5 text-ccb-success" />
@@ -139,8 +151,6 @@ export default async function LandingPage({ searchParams }: { searchParams: Prom
             <span className="text-xs sm:text-sm text-ccb-muted">© 2026 Crazy Chess Battles</span>
           </div>
           <div className="flex items-center gap-4 sm:gap-6 text-xs sm:text-sm text-ccb-muted flex-wrap justify-center">
-            <Link href="/login" className="hover:text-ccb-text transition-colors">Login</Link>
-            <Link href={`/signup${refParam}`} className="hover:text-ccb-text transition-colors">Sign Up</Link>
             <Link href="/leaderboard" className="hover:text-ccb-text transition-colors">Leaderboard</Link>
             <Link href="/tournaments" className="hover:text-ccb-text transition-colors">Tournaments</Link>
             <Link href="/terms" className="hover:text-ccb-text transition-colors">Terms</Link>

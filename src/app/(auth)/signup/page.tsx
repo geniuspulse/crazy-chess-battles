@@ -6,6 +6,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Check, Loader2, AlertCircle, ChevronRight, ChevronLeft } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 type ChessLevel = "beginner" | "intermediate" | "expert";
 type Step = 0 | 1 | 2 | 3;
 
