@@ -6,6 +6,7 @@ import {
   UserPlus, LogOut, Play, Square, Loader2, AlertCircle, ChevronRight,
   Wallet, Smartphone, Check, X, Lock, RefreshCw,
 } from 'lucide-react';
+import { detectOperator } from '@/lib/operator';
 
 interface TournamentActionsProps {
   tournamentId: string;
@@ -17,11 +18,6 @@ interface TournamentActionsProps {
   walletBalanceCents: number;
   isAdmin: boolean;
 }
-
-const OPERATORS = [
-  { id: "27494cb5-ba9e-437f-a114-4e7a7686bcca", name: "TNM Mpamba" },
-  { id: "20be6c20-adeb-4b5b-a7ba-0769820df4fb", name: "Airtel Money" },
-];
 
 export default function TournamentActions({
   tournamentId,
@@ -42,7 +38,6 @@ export default function TournamentActions({
 
   // Deposit state
   const [phone, setPhone] = useState('');
-  const [operator, setOperator] = useState(OPERATORS[0].id);
   const [depositAmount, setDepositAmount] = useState(0);
   const [depositLoading, setDepositLoading] = useState(false);
   const [depositError, setDepositError] = useState<string | null>(null);
@@ -183,7 +178,7 @@ export default function TournamentActions({
         body: JSON.stringify({
           amountCents: depositAmount * 100,
           phone,
-          operatorRefId: operator,
+          operatorRefId: detectOperator(phone),
         }),
       });
 
@@ -403,26 +398,6 @@ export default function TournamentActions({
                     placeholder="0991234567"
                     className="input-field mt-1 w-full"
                   />
-                </div>
-
-                {/* Operator */}
-                <div>
-                  <label className="text-xs font-medium text-ccb-muted">Mobile Money Operator</label>
-                  <div className="grid grid-cols-2 gap-2 mt-1">
-                    {OPERATORS.map((op) => (
-                      <button
-                        key={op.id}
-                        onClick={() => setOperator(op.id)}
-                        className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                          operator === op.id
-                            ? 'border-ccb-accent bg-ccb-accent/10 text-ccb-accent'
-                            : 'border-ccb-border bg-ccb-surface text-ccb-muted hover:bg-ccb-muted/10'
-                        }`}
-                      >
-                        {op.name}
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 <button

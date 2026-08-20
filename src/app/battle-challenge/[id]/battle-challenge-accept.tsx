@@ -4,15 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Swords, Loader2, Wallet, Smartphone, Check, AlertCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { detectOperator } from "@/lib/operator";
 
 function formatMKK(cents: number): string {
   return `MK ${Math.floor(cents / 100).toLocaleString("en-US")}`;
 }
-
-const OPERATORS_FALLBACK = [
-  { id: "27494cb5-ba9e-437f-a114-4e7a7686bcca", name: "TNM Mpamba" },
-  { id: "20be6c20-adeb-4b5b-a7ba-0769820df4fb", name: "Airtel Money" },
-];
 
 interface Props {
   challengeId: string;
@@ -51,25 +47,10 @@ export default function BattleChallengeAccept({
   // Deposit widget state
   const [depositAmount, setDepositAmount] = useState(Math.max(500, Math.ceil(shortfall / 100)));
   const [phone, setPhone] = useState(savedPhone || "");
-  const [operators, setOperators] = useState(OPERATORS_FALLBACK);
-  const [operator, setOperator] = useState(OPERATORS_FALLBACK[0].id);
   const [depositing, setDepositing] = useState(false);
   const [pendingChargeId, setPendingChargeId] = useState<string | null>(null);
   const [depositMsg, setDepositMsg] = useState<string | null>(null);
   const [depositErr, setDepositErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/payments/operators")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-          const mapped = data.data.map((op: any) => ({ id: op.ref_id || op.id, name: op.name || op.operator_name }));
-          setOperators(mapped);
-          setOperator(mapped[0].id);
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   const refreshBalance = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -145,7 +126,7 @@ export default function BattleChallengeAccept({
         body: JSON.stringify({
           amountCents: depositAmount * 100,
           phone,
-          operatorRefId: operator,
+          operatorRefId: detectOperator(phone),
           email,
         }),
       });
@@ -283,23 +264,6 @@ export default function BattleChallengeAccept({
                   placeholder="0991234567"
                   className="input-field flex-1"
                 />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs text-ccb-muted mb-1 block">Payment Method</label>
-              <div className="grid grid-cols-2 gap-2">
-                {operators.map((op) => (
-                  <button
-                    key={op.id}
-                    onClick={() => setOperator(op.id)}
-                    className={`px-3 py-2 rounded-lg text-sm border-2 transition-colors ${
-                      operator === op.id ? "border-ccb-primary bg-ccb-primary/10" : "border-ccb-border"
-                    }`}
-                  >
-                    {op.name}
-                  </button>
-                ))}
               </div>
             </div>
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { detectOperator } from "@/lib/operator";
+
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -55,11 +57,6 @@ interface WalletClientProps {
 const QUICK_AMOUNTS = [500, 1000, 2000, 5000, 10000, 25000];
 const WITHDRAW_AMOUNTS = [10000, 15000, 20000, 25000, 50000];
 
-const OPERATORS = [
-  { id: "27494cb5-ba9e-437f-a114-4e7a7686bcca", name: "TNM Mpamba", color: "bg-blue-500" },
-  { id: "20be6c20-adeb-4b5b-a7ba-0769820df4fb", name: "Airtel Money", color: "bg-red-500" },
-];
-
 const TXN_ICONS: Record<string, any> = {
   deposit: ArrowDown,
   withdrawal: ArrowUp,
@@ -88,8 +85,6 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
   const [withdrawAmount, setWithdrawAmount] = useState(10000);
   const [method, setMethod] = useState<"mobile_money" | "card">("mobile_money");
   const [phone, setPhone] = useState(savedPhone || "");
-  const [operator, setOperator] = useState(OPERATORS[0].id);
-  const [operators, setOperators] = useState(OPERATORS);
   const [loading, setLoading] = useState(false);
   const [polling, setPolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,25 +117,7 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
       .catch(() => {});
   }, []);
 
-  // Fetch operators
-  useEffect(() => {
-    fetch("/api/payments/operators")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.data && Array.isArray(data.data)) {
-          const mapped = data.data.map((op: any) => ({
-            id: op.ref_id || op.id,
-            name: op.name || op.operator_name,
-            color: op.name?.toLowerCase().includes("tnm") ? "bg-blue-500" : "bg-red-500",
-          }));
-          if (mapped.length > 0) {
-            setOperators(mapped);
-            setOperator(mapped[0].id);
-          }
-        }
-      })
-      .catch(() => {});
-  }, []);
+// Mobile money operator is auto-detected from phone prefix (08x=TNM, 09x=Airtel) — no manual selector needed.
 
   // Fetch withdrawals
   useEffect(() => {
@@ -272,7 +249,7 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
           body: JSON.stringify({
             amountCents: depositAmount * 100,
             phone,
-            operatorRefId: operator,
+            operatorRefId: detectOperator(phone),
             email,
           }),
         });
@@ -331,7 +308,8 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
         return;
       }
 
-      const opName = operators.find((o) => o.id === operator)?.name || "Mobile Money";
+      const operatorRefId = detectOperator(phone);
+      const opName = operatorRefId === "27494cb5-ba9e-437f-a114-4e7a7686bcca" ? "TNM Mpamba" : "Airtel Money";
 
       const res = await fetch("/api/withdrawals/request", {
         method: "POST",
@@ -339,7 +317,7 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
         body: JSON.stringify({
           amountCents: withdrawAmount * 100,
           phone,
-          operatorRefId: operator,
+          operatorRefId,
           operatorName: opName,
         }),
       });
@@ -590,22 +568,6 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
           {method === "mobile_money" && (
             <>
               <div>
-                <label className="text-sm font-medium text-ccb-muted mb-2 block">Operator</label>
-                <div className="flex gap-2">
-                  {operators.map((op) => (
-                    <button
-                      key={op.id}
-                      onClick={() => setOperator(op.id)}
-                      className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
-                        operator === op.id ? "border-ccb-primary bg-ccb-primary/10" : "border-ccb-border"
-                      }`}
-                    >
-                      {op.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
                 <label className="text-sm font-medium text-ccb-muted mb-2 block">Phone Number</label>
                 <input
                   type="tel"
@@ -662,23 +624,6 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
             <p className="text-xs text-ccb-muted mt-2">
               Available: {formatMWK(balance)} · Min: MWK 10,000
             </p>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-ccb-muted mb-2 block">Operator</label>
-            <div className="flex gap-2">
-              {operators.map((op) => (
-                <button
-                  key={op.id}
-                  onClick={() => setOperator(op.id)}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
-                    operator === op.id ? "border-ccb-primary bg-ccb-primary/10" : "border-ccb-border"
-                  }`}
-                >
-                  {op.name}
-                </button>
-              ))}
-            </div>
           </div>
 
           <div>
