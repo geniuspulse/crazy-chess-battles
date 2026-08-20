@@ -236,13 +236,49 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   }, [fen]);
 
   const handlePieceClick = useCallback(({ square, piece }: { square: string | null; piece: { pieceType: string } | null }) => {
-    if (isSpectator || !myTurn || gameEnded || !piece || !square) return;
-    if (!isLiveView) return;
+    if (isSpectator || gameEnded || !isLiveView) return;
+    if (!piece || !square) return;
+
+    // If we have a piece selected and click on a legal move target (capture), make the move
+    if (selectedSquare && square !== selectedSquare && legalMoveSquares.includes(square)) {
+      if (isPromotionMove(selectedSquare, square)) {
+        setPendingPromotion({ from: selectedSquare, to: square });
+      } else {
+        try {
+          const tempGame = new Chess(fen);
+          const move = tempGame.move({ from: selectedSquare, to: square, promotion: "q" });
+          if (move !== null) {
+            setFen(tempGame.fen());
+            setMoveHistory(tempGame.history());
+            setViewPly(tempGame.history().length);
+            setLastMove({ from: selectedSquare, to: square });
+            playSound(detectMoveSound(move));
+            if (tempGame.inCheck() && !tempGame.isCheckmate()) {
+              setTimeout(() => playSound("check"), 100);
+            }
+            makeMove(selectedSquare, square);
+          }
+        } catch {}
+      }
+      setSelectedSquare(null);
+      setLegalMoveSquares([]);
+      return;
+    }
+
+    // Not a legal move target — select the piece if it's ours
+    if (!myTurn) return;
     const game = new Chess(fen);
     const squarePiece = game.get(square as any);
     if (!squarePiece) return;
     const isMyPiece = (isWhite && squarePiece.color === "w") || (isBlack && squarePiece.color === "b");
     if (!isMyPiece) {
+      // Clicked opponent piece without it being a legal capture — clear selection
+      setSelectedSquare(null);
+      setLegalMoveSquares([]);
+      return;
+    }
+    // Toggle: if clicking the same piece, deselect; otherwise select new piece
+    if (selectedSquare === square) {
       setSelectedSquare(null);
       setLegalMoveSquares([]);
       return;
@@ -250,7 +286,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
     setSelectedSquare(square);
     const moves = game.moves({ square: square as any, verbose: true });
     setLegalMoveSquares(moves.map((m: any) => m.to));
-  }, [isSpectator, myTurn, gameEnded, fen, isWhite, isBlack, isLiveView]);
+  }, [isSpectator, myTurn, gameEnded, fen, isWhite, isBlack, isLiveView, selectedSquare, legalMoveSquares, isPromotionMove, makeMove]);
 
   const handleSquareClick = useCallback(({ square, piece }: { square: string; piece: { pieceType: string } | null }) => {
     if (selectedSquare && square !== selectedSquare) {
