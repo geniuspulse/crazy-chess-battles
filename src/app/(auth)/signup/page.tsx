@@ -331,9 +331,9 @@ export default function SignupPage() {
                       key={level}
                       type="button"
                       onClick={() => setChessLevel(level)}
-                      className={`rounded-lg border p-4 text-center transition-all ${
+                      className={`rounded-lg border-2 p-4 text-center transition-all ${
                         chessLevel === level
-                          ? config.accent + " ring-2 ring-offset-2 ring-offset-ccb-surface"
+                          ? config.accent
                           : "border-ccb-border bg-ccb-surface hover:bg-ccb-card"
                       }`}
                     >
