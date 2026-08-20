@@ -132,19 +132,21 @@ export default async function TournamentDetailPage({
     }
   }
 
-  // Check current user profile & participation
+  // Check current user profile & participation (optional — page works without auth)
   let isAdmin = false;
   let isJoined = false;
+  let walletBalance = 0;
 
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("is_admin")
+      .select("is_admin, wallet_balance_cents")
       .eq("id", user.id)
       .single();
 
     isAdmin = profile?.is_admin ?? false;
     isJoined = participants.some((p) => p.player_id === user.id);
+    walletBalance = profile?.wallet_balance_cents ?? 0;
   }
 
   const statusColors: Record<string, string> = {
@@ -206,8 +208,10 @@ export default async function TournamentDetailPage({
             tournamentId={tournament.id}
             status={tournament.status}
             isJoined={isJoined}
+            isLoggedIn={!!user}
             entryFeeCents={tournament.entry_fee_cents}
             prizePoolCents={tournament.prize_pool_cents}
+            walletBalanceCents={walletBalance}
             isAdmin={isAdmin}
           />
         </div>

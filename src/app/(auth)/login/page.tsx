@@ -15,6 +15,7 @@ export default function LoginPage() {
   const supabase = createClient();
 
   const redirectPath = searchParams.get("redirect") || "/dashboard";
+  const actionParam = searchParams.get("action");
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,15 +31,20 @@ export default function LoginPage() {
       setError(error.message);
       setLoading(false);
     } else {
-      router.push(redirectPath);
+      // Preserve action param (e.g., ?action=join) for tournament auto-join flow
+      const fullRedirect = actionParam
+        ? `${redirectPath}?action=${actionParam}`
+        : redirectPath;
+      router.push(fullRedirect);
       router.refresh();
     }
   };
 
-  // Build signup link with redirect param preserved
-  const signupLink = redirectPath !== "/dashboard"
-    ? `/signup?redirect=${encodeURIComponent(redirectPath)}`
-    : "/signup";
+  // Build signup link with redirect + action params preserved
+  const signupParams = new URLSearchParams();
+  if (redirectPath !== "/dashboard") signupParams.set("redirect", redirectPath);
+  if (actionParam) signupParams.set("action", actionParam);
+  const signupLink = `/signup?${signupParams.toString()}`;
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">

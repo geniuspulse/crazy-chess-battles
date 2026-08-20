@@ -19,7 +19,7 @@ function formatPrizePool(cents: number | null | undefined): string {
 export default async function TournamentsPage() {
   const supabase = await createClient();
 
-  // Get user + admin status
+  // Get user + admin status (optional — page works without auth)
   const { data: { user } } = await supabase.auth.getUser();
   let isAdmin = false;
   if (user) {
@@ -50,14 +50,6 @@ export default async function TournamentsPage() {
     `)
     .order("starts_at", { ascending: false })
     .limit(20);
-
-  // Auto-start tournaments past their scheduled time (fire-and-forget)
-  if (tournaments?.some(t => t.status === "upcoming" && new Date(t.starts_at) < new Date())) {
-    fetch(`\${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/tournaments/auto-start`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    }).catch(() => {});
-  }
 
   const statusColors: Record<string, string> = {
     upcoming: "text-ccb-accent bg-ccb-accent/10 border-ccb-accent/20",
@@ -122,7 +114,6 @@ export default async function TournamentsPage() {
                     <p className="text-sm text-ccb-muted mb-4 line-clamp-2">{t.description}</p>
                   )}
 
-                  {/* Financials & Player Count Grid */}
                   <div className="grid grid-cols-3 gap-2 p-3 rounded-lg bg-ccb-surface/60 text-xs mb-4">
                     <div>
                       <div className="text-ccb-muted flex items-center gap-1 mb-0.5">

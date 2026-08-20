@@ -43,8 +43,9 @@ export default function SignupPage() {
   const searchParams = useSearchParams();
   const supabase = createClient();
 
-  // Capture redirect path from URL
+  // Capture redirect path + action from URL
   const redirectPath = searchParams.get("redirect") || "/dashboard";
+  const actionParam = searchParams.get("action");
 
   // Capture referral code from URL or localStorage
   useEffect(() => {
@@ -111,14 +112,18 @@ export default function SignupPage() {
       }
     }
 
-    router.push(redirectPath);
+    const fullRedirect = actionParam
+      ? `${redirectPath}?action=${actionParam}`
+      : redirectPath;
+    router.push(fullRedirect);
     router.refresh();
   };
 
   // Build login link with redirect param preserved
-  const loginLink = redirectPath !== "/dashboard"
-    ? `/login?redirect=${encodeURIComponent(redirectPath)}`
-    : "/login";
+  const loginParams = new URLSearchParams();
+  if (redirectPath !== "/dashboard") loginParams.set("redirect", redirectPath);
+  if (actionParam) loginParams.set("action", actionParam);
+  const loginLink = loginParams.toString() ? `/login?${loginParams.toString()}` : "/login";
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-8">

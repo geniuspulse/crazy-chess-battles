@@ -44,6 +44,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Reward already claimed", alreadyClaimed: true }, { status: 400 });
     }
 
+    // Server-side verification for actions that claim a real achievement —
+    // prevents berry farming by clicking Claim without actually doing the thing.
+    if (action === "first_game") {
+      const { count } = await admin
+        .from("games")
+        .select("id", { count: "exact", head: true })
+        .or(`white_player_id.eq.${user.id},black_player_id.eq.${user.id}`)
+        .not("status", "eq", "playing");
+
+      if (!count || count < 1) {
+        return NextResponse.json(
+          { error: "Play and finish at least one game first" },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (action === "profile_complete") {
+      const { data: profile } = await admin
+        .from("profiles")
+        .select("username, display_name, avatar_url")
+        .eq("id", user.id)
+        .single();
+
+      if (!profile?.username || !profile?.display_name || !profile?.avatar_url) {
+        return NextResponse.json(
+          { error: "Add a username, display name, and avatar to your profile first" },
+          { status: 400 }
+        );
+      }
+    }
+
     const berries = (config as any)[actionInfo.configKey] || 0;
     if (berries <= 0) {
       return NextResponse.json({ error: "This reward is not available" }, { status: 400 });
