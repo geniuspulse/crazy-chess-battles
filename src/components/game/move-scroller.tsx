@@ -9,6 +9,27 @@ interface MoveScrollerProps {
   onPlyChange: (ply: number) => void;
 }
 
+// White pieces use outline/hollow unicode symbols, black pieces use filled symbols —
+// matches chess.com's move list convention.
+const WHITE_SYMBOLS: Record<string, string> = { N: "♘", B: "♗", R: "♖", Q: "♕", K: "♔" };
+const BLACK_SYMBOLS: Record<string, string> = { N: "♞", B: "♝", R: "♜", Q: "♛", K: "♚" };
+
+/**
+ * Converts SAN notation (e.g. "Nc6", "Qxd8+", "O-O") into chess.com-style
+ * notation with a piece glyph instead of the letter. Pawn moves (e4, exd5)
+ * and castling (O-O, O-O-O) are left as-is.
+ */
+function formatSAN(san: string, isWhiteMove: boolean): string {
+  if (!san) return san;
+  if (san.startsWith("O-O")) return san;
+  const pieceLetter = san[0];
+  const symbols = isWhiteMove ? WHITE_SYMBOLS : BLACK_SYMBOLS;
+  if (symbols[pieceLetter]) {
+    return symbols[pieceLetter] + san.slice(1);
+  }
+  return san; // pawn move
+}
+
 /**
  * Chess.com-style horizontal move list.
  * Shows move pairs in a horizontal strip with scroll buttons.
@@ -94,7 +115,7 @@ export default function MoveScroller({ moves, currentPly, onPlyChange }: MoveScr
                     : "text-ccb-text hover:bg-ccb-surface"
                 }`}
               >
-                {row.white}
+                {formatSAN(row.white, true)}
               </button>
             )}
             {row.black && (
@@ -107,7 +128,7 @@ export default function MoveScroller({ moves, currentPly, onPlyChange }: MoveScr
                     : "text-ccb-text hover:bg-ccb-surface"
                 }`}
               >
-                {row.black}
+                {formatSAN(row.black, false)}
               </button>
             )}
           </div>

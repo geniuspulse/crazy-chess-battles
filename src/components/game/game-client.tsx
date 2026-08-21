@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
 import { useRealtimeGame, type GameState } from "@/hooks/use-realtime-game";
-import { Clock, Flag, Eye, ArrowLeft, Volume2, VolumeX, Palette, X, MessageCircle, MoreVertical, Handshake } from "lucide-react";
+import { Clock, Flag, Eye, ArrowLeft, Volume2, VolumeX, Palette, X, MessageCircle, MoreVertical, Handshake, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { getCapturedPieces, getCheckSquare } from "@/lib/game/board-helpers";
 import { playSound, detectMoveSound, setSoundEnabled } from "@/lib/game/sound";
@@ -415,7 +415,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const toggleSheet = (sheet: SheetType) => setActiveSheet((prev) => (prev === sheet ? null : sheet));
 
   // ============ CHESS.COM-STYLE PLAYER BAR ============
-  const renderPlayerBar = (data: { name: string; rating?: number | string | null; captured: string[]; advantage: number; clock: string; isActive: boolean; symbol: string }) => (
+  const renderPlayerBar = (data: { name: string; rating?: number | string | null; ratingChange?: number | null; captured: string[]; advantage: number; clock: string; isActive: boolean; symbol: string }) => (
     <div className={`flex items-center justify-between max-w-[600px] mx-auto w-full px-2 py-2 rounded-lg transition-colors ${data.isActive ? "bg-ccb-primary/8" : ""}`}>
       <div className="flex items-center gap-2.5 min-w-0">
         {/* Avatar circle — chess.com style */}
@@ -425,7 +425,17 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         <div className="flex flex-col min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="text-sm font-semibold leading-tight truncate">{data.name}</span>
-            {data.rating != null && <span className="text-xs text-ccb-muted shrink-0">({data.rating})</span>}
+            {data.rating != null && (
+              <span className="text-xs text-ccb-muted shrink-0 flex items-center gap-0.5">
+                ({data.rating}
+                {gameEnded && typeof data.ratingChange === "number" && data.ratingChange !== 0 && (
+                  <span className={data.ratingChange > 0 ? "text-emerald-500 font-semibold" : "text-ccb-danger font-semibold"}>
+                    {data.ratingChange > 0 ? `+${data.ratingChange}` : data.ratingChange}
+                  </span>
+                )}
+                )
+              </span>
+            )}
           </div>
           <CapturedPieces pieces={data.captured} advantage={data.advantage} perspective="top" />
         </div>
@@ -466,10 +476,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         </div>
       )}
 
-      {/* Opponent bar */}
-      {renderPlayerBar(topPlayer)}
-
-      {/* Horizontal move scroller — chess.com style, between player bar and board */}
+      {/* Horizontal move scroller — chess.com style, at the very top above the opponent bar */}
       <div className="max-w-[600px] mx-auto w-full px-2 py-1">
         {moveHistory.length >= 2 && (
           <div className="mb-1">
@@ -480,6 +487,9 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
           <MoveScroller moves={moveHistory} currentPly={viewPly} onPlyChange={setViewPly} />
         </div>
       </div>
+
+      {/* Opponent bar */}
+      {renderPlayerBar(topPlayer)}
 
       {/* Board */}
       <div ref={boardContainerRef} className="flex-1 min-h-0 flex items-center justify-center px-2 py-1">
@@ -559,13 +569,43 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         </div>
       )}
 
-      {/* Mobile bottom toolbar — Resign, Draw, Chat */}
+      {/* Mobile bottom toolbar — chess.com style: live play shows Chat/Draw/Resign,
+          finished games switch to Options/Chat/Back/Forward for reviewing moves */}
       <div className="lg:hidden shrink-0 border-t border-ccb-border" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
         {showResignConfirm ? (
           <div className="flex items-center justify-center gap-3 h-14">
             <span className="text-sm text-ccb-muted">Resign?</span>
             <button onClick={handleResign} className="btn bg-ccb-danger text-white px-4 py-1.5 text-sm">Yes</button>
             <button onClick={() => setShowResignConfirm(false)} className="btn-secondary text-sm px-4 py-1.5">Cancel</button>
+          </div>
+        ) : gameEnded ? (
+          <div className="flex items-center justify-around h-14">
+            <button
+              onClick={() => toggleSheet("menu")}
+              className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-muted hover:text-ccb-primary"
+            >
+              <MoreVertical className="w-5 h-5" /><span className="text-[10px]">Options</span>
+            </button>
+            <button
+              onClick={() => toggleSheet("chat")}
+              className="flex flex-col items-center justify-center w-11 h-11 rounded-full bg-ccb-primary text-white shadow-md -mt-1"
+            >
+              <MessageCircle className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setViewPly(Math.max(0, viewPly - 1))}
+              disabled={viewPly <= 0}
+              className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-muted hover:text-ccb-primary disabled:opacity-30"
+            >
+              <ChevronLeft className="w-5 h-5" /><span className="text-[10px]">Back</span>
+            </button>
+            <button
+              onClick={() => setViewPly(Math.min(moveHistory.length, viewPly + 1))}
+              disabled={viewPly >= moveHistory.length}
+              className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-muted hover:text-ccb-primary disabled:opacity-30"
+            >
+              <ChevronRight className="w-5 h-5" /><span className="text-[10px]">Forward</span>
+            </button>
           </div>
         ) : (
           <div className="flex items-center justify-around h-14">
@@ -577,14 +617,14 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
             </button>
             <button
               onClick={offerDraw}
-              disabled={gameEnded || isSpectator}
+              disabled={isSpectator}
               className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-muted disabled:opacity-40"
             >
               <Handshake className="w-5 h-5" /><span className="text-[10px]">Draw</span>
             </button>
             <button
               onClick={() => setShowResignConfirm(true)}
-              disabled={gameEnded || isSpectator}
+              disabled={isSpectator}
               className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-danger disabled:opacity-40"
             >
               <Flag className="w-5 h-5" /><span className="text-[10px]">Resign</span>
@@ -692,8 +732,8 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
 
   // ============ SPECTATOR VIEW ============
   if (isSpectator) {
-    const topPlayer = { name: blackName, rating: game.black_rating, captured: captured.black, advantage: -captured.advantage, clock: getLiveClock("black"), isActive: game.turn === "black" && !gameEnded, symbol: "♚" };
-    const bottomPlayer = { name: whiteName, rating: game.white_rating, captured: captured.white, advantage: captured.advantage, clock: getLiveClock("white"), isActive: game.turn === "white" && !gameEnded, symbol: "♔" };
+    const topPlayer = { name: blackName, rating: game.black_rating, ratingChange: game.black_rating_change, captured: captured.black, advantage: -captured.advantage, clock: getLiveClock("black"), isActive: game.turn === "black" && !gameEnded, symbol: "♚" };
+    const bottomPlayer = { name: whiteName, rating: game.white_rating, ratingChange: game.white_rating_change, captured: captured.white, advantage: captured.advantage, clock: getLiveClock("white"), isActive: game.turn === "white" && !gameEnded, symbol: "♔" };
 
     return (
       <>
@@ -719,12 +759,12 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
 
   // ============ PLAYER VIEW ============
   const playerData = isWhite
-    ? { name: blackName, rating: game.black_rating, captured: captured.black, advantage: -captured.advantage, clock: getLiveClock("black"), isActive: game.turn === "black" && !gameEnded, symbol: "♚" }
-    : { name: whiteName, rating: game.white_rating, captured: captured.white, advantage: captured.advantage, clock: getLiveClock("white"), isActive: game.turn === "white" && !gameEnded, symbol: "♔" };
+    ? { name: blackName, rating: game.black_rating, ratingChange: game.black_rating_change, captured: captured.black, advantage: -captured.advantage, clock: getLiveClock("black"), isActive: game.turn === "black" && !gameEnded, symbol: "♚" }
+    : { name: whiteName, rating: game.white_rating, ratingChange: game.white_rating_change, captured: captured.white, advantage: captured.advantage, clock: getLiveClock("white"), isActive: game.turn === "white" && !gameEnded, symbol: "♔" };
 
   const myData = isWhite
-    ? { name: whiteName, rating: game.white_rating, captured: captured.white, advantage: captured.advantage, clock: getLiveClock("white"), isActive: game.turn === "white" && !gameEnded, symbol: "♔" }
-    : { name: blackName, rating: game.black_rating, captured: captured.black, advantage: -captured.advantage, clock: getLiveClock("black"), isActive: game.turn === "black" && !gameEnded, symbol: "♚" };
+    ? { name: whiteName, rating: game.white_rating, ratingChange: game.white_rating_change, captured: captured.white, advantage: captured.advantage, clock: getLiveClock("white"), isActive: game.turn === "white" && !gameEnded, symbol: "♔" }
+    : { name: blackName, rating: game.black_rating, ratingChange: game.black_rating_change, captured: captured.black, advantage: -captured.advantage, clock: getLiveClock("black"), isActive: game.turn === "black" && !gameEnded, symbol: "♚" };
 
   return (
     <>
