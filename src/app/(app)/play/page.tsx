@@ -176,7 +176,9 @@ export default function PlayPage() {
         body: JSON.stringify({ timeControl: selectedTC, rated }),
       });
       const data = await response.json();
-      if (data.url) setChallengeUrl(data.url);
+      if (data.challengeId) {
+        router.push(`/challenge/${data.challengeId}`);
+      }
     } catch {
       // ignore
     }
@@ -264,56 +266,6 @@ export default function PlayPage() {
     );
   }
 
-
-  // ===== Create Challenge view =====
-  if (view === "challenge") {
-    return (
-      <div className="max-w-2xl mx-auto space-y-5 pb-20 sm:pb-0 animate-slide-up">
-        <button onClick={() => { setChallengeUrl(null); setView("main"); }} className="text-sm text-ccb-muted hover:text-ccb-text flex items-center gap-1">
-          <ChevronRight className="w-4 h-4 rotate-180" /> Back
-        </button>
-
-        <div className="card p-5 sm:p-6 space-y-5">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold">Challenge a Friend</h1>
-            <p className="text-sm text-ccb-muted mt-1">Pick your settings, share the link, and play when they join</p>
-          </div>
-
-          <TimeControlPicker selectedTC={selectedTC} setSelectedTC={setSelectedTC} />
-          <RatedToggle rated={rated} setRated={setRated} />
-
-          {challengeUrl ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm text-ccb-success">
-                <Check className="w-4 h-4" /> Challenge link created!
-              </div>
-              <div className="flex gap-2">
-                <input
-                  readOnly
-                  value={challengeUrl}
-                  className="flex-1 px-3 py-2 rounded-lg bg-ccb-surface border border-ccb-border text-sm text-ccb-muted"
-                />
-                <button onClick={copyChallengeUrl} className="btn-secondary px-4 flex items-center gap-1.5">
-                  {challengeCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  {challengeCopied ? "Copied!" : "Copy"}
-                </button>
-              </div>
-              <p className="text-xs text-ccb-muted">
-                Your referral code is automatically included — if they are new, you will get 1000 CCB when they start playing.
-              </p>
-              <button onClick={() => { setChallengeUrl(null); setView("main"); }} className="btn-secondary w-full">
-                Done
-              </button>
-            </div>
-          ) : (
-            <button onClick={handleCreateChallenge} disabled={creatingChallenge} className="btn-primary w-full text-base py-3.5">
-              <Link2 className="w-5 h-5 mr-2" /> {creatingChallenge ? "Creating..." : "Create Challenge Link"}
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
 
   // ===== Play vs Computer view =====
   if (view === "computer") {

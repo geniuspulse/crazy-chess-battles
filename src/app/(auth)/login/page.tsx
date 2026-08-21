@@ -18,6 +18,7 @@ export default function LoginPage() {
 
   const redirectPath = searchParams.get("redirect") || "/dashboard";
   const actionParam = searchParams.get("action");
+  const refCode = searchParams.get("ref");
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,6 +45,7 @@ export default function LoginPage() {
   const signupParams = new URLSearchParams();
   if (redirectPath !== "/dashboard") signupParams.set("redirect", redirectPath);
   if (actionParam) signupParams.set("action", actionParam);
+  if (refCode) signupParams.set("ref", refCode);
   const signupLink = `/signup?${signupParams.toString()}`;
 
   return (
