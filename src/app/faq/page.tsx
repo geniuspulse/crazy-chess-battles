@@ -13,7 +13,7 @@ const FAQ_SECTIONS = [
       },
       {
         q: "Do I need a Chess.com account?",
-        a: "No, but we recommend it. Linking your Chess.com account during signup auto-imports your rating and gives you a verified badge. You can also play with a self-selected skill level (Beginner, Intermediate, or Advanced) instead.",
+        a: "No, but we recommend it. Linking your Chess.com account during signup auto-imports your rating and gives you a verified badge. You can also play with a self-selected skill level (Beginner, Casual, or Advanced) instead.",
       },
       {
         q: "What devices does CCB work on?",

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Trophy, Zap, Shield, Users, Heart, Quote } from "lucide-react";
+import { ArrowRight, Trophy, Zap, Shield, Users, Heart, Quote, BookOpen } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -125,6 +125,20 @@ export default function AboutPage() {
                 <div className="text-xs text-ccb-muted">Founder & CEO, Crazy Chess Battles</div>
               </div>
             </div>
+
+            {/* Read full story button */}
+            <div className="pt-4">
+              <a
+                href="https://apmchibondo.blog/articles/why-i-built-crazy-chess-battles"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg border border-ccb-border bg-ccb-card px-5 py-2.5 text-sm font-medium text-ccb-text transition-colors hover:border-ccb-primary hover:bg-ccb-primary/5"
+              >
+                <BookOpen className="w-4 h-4 text-ccb-primary" />
+                Read the full story on the blog
+                <ArrowRight className="w-3.5 h-3.5 text-ccb-muted" />
+              </a>
+            </div>
           </div>
         </div>
       </section>
@@ -195,8 +209,9 @@ export default function AboutPage() {
             <Link href="/leaderboard" className="hover:text-ccb-text transition-colors">Leaderboard</Link>
             <Link href="/tournaments" className="hover:text-ccb-text transition-colors">Tournaments</Link>
             <Link href="/faq" className="hover:text-ccb-text transition-colors">FAQ</Link>
-            <Link href="/terms" className="hover:text-ccb-text transition-colors">Terms</Link>
+            <Link href="/about" className="hover:text-ccb-text transition-colors">About</Link>
             <Link href="/privacy" className="hover:text-ccb-text transition-colors">Privacy</Link>
+            <Link href="/terms" className="hover:text-ccb-text transition-colors">Terms</Link>
           </div>
         </div>
       </footer>

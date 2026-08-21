@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// Allow enough time for large tournaments (100+ players) to seed + create games
+export const maxDuration = 60;
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -97,14 +100,16 @@ export async function POST(
       }))
       .sort((a, b) => b.rating - a.rating);
 
-    // Update seeds
-    for (let i = 0; i < seeded.length; i++) {
-      await admin
-        .from("tournament_participants")
-        .update({ seed: i + 1 })
-        .eq("player_id", seeded[i].player_id)
-        .eq("tournament_id", tournamentId);
-    }
+    // Update seeds — run in parallel (was sequential, ~O(n) round-trips in series)
+    await Promise.all(
+      seeded.map((s, i) =>
+        admin
+          .from("tournament_participants")
+          .update({ seed: i + 1 })
+          .eq("player_id", s.player_id)
+          .eq("tournament_id", tournamentId)
+      )
+    );
 
     // Generate Swiss pairings for Round 1
     const pairings: Array<{ white: string; black: string; bye?: string }> = [];
@@ -147,40 +152,56 @@ export async function POST(
       console.error("Round creation error:", roundError);
     }
 
-    // Create game entries for each pairing and award byes
-    for (const pairing of pairings) {
-      if (pairing.bye) {
-        await admin
-          .from("tournament_participants")
-          .update({ wins: 1, score: 1, games_played: 1 })
-          .eq("player_id", pairing.bye)
-          .eq("tournament_id", tournamentId);
-        continue;
-      }
+    // Split byes from real matches so we can bulk-insert games in ONE call
+    // instead of N sequential inserts — this is what was at risk of timing
+    // out (and partially failing) once tournaments hit ~50-100 players.
+    const byePairings = pairings.filter((p) => p.bye);
+    const matchPairings = pairings.filter((p) => !p.bye);
 
-      const whiteRating = ratingMap.get(pairing.white) || 1200;
-      const blackRating = ratingMap.get(pairing.black) || 1200;
-      const initialMs = (tournament.initial_minutes || 10) * 60 * 1000;
+    const initialMs = (tournament.initial_minutes || 10) * 60 * 1000;
 
-      await admin.from("games").insert({
-        white_player_id: pairing.white,
-        black_player_id: pairing.black,
-        white_rating: whiteRating,
-        black_rating: blackRating,
-        status: "playing",
-        time_control: tournament.time_control,
-        initial_minutes: tournament.initial_minutes,
-        increment_seconds: tournament.increment_seconds,
-        rated: false,
-        tournament_id: tournamentId,
-        tournament_round: 1,
-        fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-        turn: "white",
-        move_count: 0,
-        white_clock_ms: initialMs,
-        black_clock_ms: initialMs,
-        last_move_at: new Date().toISOString(),
-      });
+    const gameRows = matchPairings.map((pairing) => ({
+      white_player_id: pairing.white,
+      black_player_id: pairing.black,
+      white_rating: ratingMap.get(pairing.white) || 1200,
+      black_rating: ratingMap.get(pairing.black) || 1200,
+      status: "playing",
+      time_control: tournament.time_control,
+      initial_minutes: tournament.initial_minutes,
+      increment_seconds: tournament.increment_seconds,
+      rated: false,
+      tournament_id: tournamentId,
+      tournament_round: 1,
+      fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      turn: "white",
+      move_count: 0,
+      white_clock_ms: initialMs,
+      black_clock_ms: initialMs,
+      last_move_at: new Date().toISOString(),
+    }));
+
+    const writes: PromiseLike<any>[] = [];
+
+    if (gameRows.length > 0) {
+      writes.push(admin.from("games").insert(gameRows));
+    }
+
+    if (byePairings.length > 0) {
+      writes.push(
+        ...byePairings.map((p) =>
+          admin
+            .from("tournament_participants")
+            .update({ wins: 1, score: 1, games_played: 1 })
+            .eq("player_id", p.bye)
+            .eq("tournament_id", tournamentId)
+        )
+      );
+    }
+
+    const writeResults = await Promise.all(writes);
+    const writeError = writeResults.find((r: any) => r?.error)?.error;
+    if (writeError) {
+      console.error("Game/bye creation error:", writeError);
     }
 
     // Update tournament status

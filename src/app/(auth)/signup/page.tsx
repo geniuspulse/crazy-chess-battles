@@ -20,7 +20,7 @@ const LEVEL_CONFIG: Record<ChessLevel, { label: string; rating: number; blurb: s
     accent: "border-ccb-bronze bg-ccb-bronze/10",
   },
   intermediate: {
-    label: "Intermediate",
+    label: "Casual",
     rating: 1500,
     blurb: "Comfortable with tactics and openings",
     icon: "♞",

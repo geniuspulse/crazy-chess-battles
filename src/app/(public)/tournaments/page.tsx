@@ -193,7 +193,7 @@ export default async function TournamentsPage() {
                       <Clock className="w-3 h-3" />
                       {t.time_control}
                     </span>
-                    {t.min_players && t.min_players > 0 && (
+                    {(t.min_players ?? 0) > 0 && (
                       <>
                         <span>•</span>
                         <span>Min: {t.min_players}</span>

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// Allow enough time for large tournaments (100+ players / ~50 games per round)
+export const maxDuration = 60;
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -153,45 +156,60 @@ export async function POST(
       is_complete: false,
     });
 
-    // Create games for real pairings, award byes
-    for (const pairing of pairings) {
-      if (pairing.bye) {
-        const byeParticipant = participants.find((p) => p.player_id === pairing.bye);
-        await admin
-          .from("tournament_participants")
-          .update({
-            score: (byeParticipant?.score || 0) + 1,
-            wins: (byeParticipant?.wins || 0) + 1,
-            games_played: (byeParticipant?.games_played || 0) + 1,
-          })
-          .eq("player_id", pairing.bye)
-          .eq("tournament_id", tournamentId);
-        continue;
-      }
+    // Split byes from real matches so we bulk-insert games in ONE call
+    // instead of N sequential inserts (matters once a round has 25-50+ boards).
+    const byePairings = pairings.filter((p) => p.bye);
+    const matchPairings = pairings.filter((p) => !p.bye);
 
-      const whiteRating = profiles?.find((p: any) => p.id === pairing.white)?.rating || 1200;
-      const blackRating = profiles?.find((p: any) => p.id === pairing.black)?.rating || 1200;
-      const initialMs = tournament.initial_minutes * 60 * 1000;
+    const initialMs = tournament.initial_minutes * 60 * 1000;
 
-      await admin.from("games").insert({
-        white_player_id: pairing.white,
-        black_player_id: pairing.black,
-        white_rating: whiteRating,
-        black_rating: blackRating,
-        status: "playing",
-        time_control: tournament.time_control,
-        initial_minutes: tournament.initial_minutes,
-        increment_seconds: tournament.increment_seconds,
-        rated: false,
-        tournament_id: tournamentId,
-        tournament_round: nextRound,
-        fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-        turn: "white",
-        move_count: 0,
-        white_clock_ms: initialMs,
-        black_clock_ms: initialMs,
-        last_move_at: new Date().toISOString(),
-      });
+    const gameRows = matchPairings.map((pairing) => ({
+      white_player_id: pairing.white,
+      black_player_id: pairing.black,
+      white_rating: profiles?.find((p: any) => p.id === pairing.white)?.rating || 1200,
+      black_rating: profiles?.find((p: any) => p.id === pairing.black)?.rating || 1200,
+      status: "playing",
+      time_control: tournament.time_control,
+      initial_minutes: tournament.initial_minutes,
+      increment_seconds: tournament.increment_seconds,
+      rated: false,
+      tournament_id: tournamentId,
+      tournament_round: nextRound,
+      fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      turn: "white",
+      move_count: 0,
+      white_clock_ms: initialMs,
+      black_clock_ms: initialMs,
+      last_move_at: new Date().toISOString(),
+    }));
+
+    const writes: PromiseLike<any>[] = [];
+
+    if (gameRows.length > 0) {
+      writes.push(admin.from("games").insert(gameRows));
+    }
+
+    if (byePairings.length > 0) {
+      writes.push(
+        ...byePairings.map((p) => {
+          const byeParticipant = participants.find((pp) => pp.player_id === p.bye);
+          return admin
+            .from("tournament_participants")
+            .update({
+              score: (byeParticipant?.score || 0) + 1,
+              wins: (byeParticipant?.wins || 0) + 1,
+              games_played: (byeParticipant?.games_played || 0) + 1,
+            })
+            .eq("player_id", p.bye)
+            .eq("tournament_id", tournamentId);
+        })
+      );
+    }
+
+    const writeResults = await Promise.all(writes);
+    const writeError = writeResults.find((r: any) => r?.error)?.error;
+    if (writeError) {
+      console.error("Round game/bye creation error:", writeError);
     }
 
     // Update tournament current round

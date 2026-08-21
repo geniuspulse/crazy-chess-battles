@@ -53,7 +53,7 @@ export default function HowItWorksPage() {
               </div>
               <p className="text-sm text-ccb-muted">
                 Sign up with a username, email, and password. During signup, you&apos;ll pick your chess experience level
-                (Beginner, Intermediate, or Advanced) which sets your initial rating. You can also optionally link your
+                (Beginner, Casual, or Advanced) which sets your initial rating. You can also optionally link your
                 Chess.com account to auto-import your real rating and get a verified badge.
               </p>
               <div className="space-y-2">

@@ -287,7 +287,7 @@ export default async function TournamentDetailPage({
             </div>
           </div>
 
-          {tournament.min_players && tournament.min_players > 0 && (
+          {(tournament.min_players ?? 0) > 0 && (
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-xs text-ccb-muted">
                 <Users className="w-3.5 h-3.5" />
@@ -330,7 +330,7 @@ export default async function TournamentDetailPage({
             </div>
           )}
 
-          {tournament.rounds && (
+          {(tournament.rounds ?? 0) > 0 && (
             <div className="flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5" />
               <span>
@@ -339,7 +339,7 @@ export default async function TournamentDetailPage({
             </div>
           )}
 
-          {tournament.duration_minutes && (
+          {(tournament.duration_minutes ?? 0) > 0 && (
             <div className="flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5" />
               <span>Duration: {tournament.duration_minutes} mins</span>
@@ -384,7 +384,7 @@ export default async function TournamentDetailPage({
       )}
 
       {/* Prize Distribution Breakdown */}
-      {((isPaid && totalCollected > 0) || (tournament.prize_pool_cents && tournament.prize_pool_cents > 0 && !isUserCreated)) && (
+      {Boolean((isPaid && totalCollected > 0) || (tournament.prize_pool_cents && tournament.prize_pool_cents > 0 && !isUserCreated)) && (
         <div className="card space-y-4">
           <h2 className="text-lg font-bold flex items-center gap-2">
             <Award className="w-5 h-5 text-ccb-accent" />
