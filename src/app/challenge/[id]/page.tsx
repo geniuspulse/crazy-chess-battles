@@ -65,7 +65,7 @@ export default async function ChallengePage({
   // If user is the challenger, show waiting screen
   if (challenge.challenger_id === user.id) {
     const challengeUrl = `${process.env.NEXT_PUBLIC_SITE_URL || "https://crazychessbattles.live"}/challenge/${id}`;
-    return <ChallengeWaiting url={challengeUrl} />;
+    return <ChallengeWaiting url={challengeUrl} challengeId={id} />;
   }
 
   // Check expiry
