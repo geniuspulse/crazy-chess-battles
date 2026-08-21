@@ -54,8 +54,49 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
   // event can never clobber a newer state with an older FEN (this was
   // causing pieces to visually jump forward -> backward -> forward).
   const lastAppliedMoveCount = useRef<number>(initialState.move_count ?? 0);
+  // Reconnection counter — bumping this re-triggers the subscription effect
+  const [reconnectTick, setReconnectTick] = useState(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Subscribe to real-time updates
+  // ── Fetch the latest game state from the API as a fallback ──────────────
+  // This runs:
+  //   1. On initial mount (in case realtime hasn't connected yet)
+  //   2. On every poll tick (every 4s — a safety net for missed realtime events)
+  //   3. Immediately after any reconnection
+  const fetchGameState = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/game/state?gameId=${gameId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // Only apply if this is a newer state than what we already have
+      const newMoveCount = data.move_count ?? 0;
+      if (newMoveCount < lastAppliedMoveCount.current) return;
+      if (newMoveCount === lastAppliedMoveCount.current) {
+        // Same move count — but check if status changed (e.g. timeout, resignation)
+        if (data.status === game.status) return;
+      }
+
+      lastAppliedMoveCount.current = newMoveCount;
+      setGame((prev) => ({
+        ...prev,
+        fen: data.fen ?? prev.fen,
+        pgn: data.pgn ?? prev.pgn,
+        turn: data.turn ?? prev.turn,
+        status: data.status ?? prev.status,
+        winner: data.winner ?? prev.winner,
+        move_count: newMoveCount,
+        white_clock_ms: data.white_clock_ms ?? prev.white_clock_ms,
+        black_clock_ms: data.black_clock_ms ?? prev.black_clock_ms,
+        last_move_at: data.last_move_at ?? prev.last_move_at,
+      }));
+    } catch {
+      // Silent — polling will retry
+    }
+  }, [gameId, game.status]);
+
+  // ── Subscribe to real-time updates ──────────────────────────────────────
   useEffect(() => {
     const channel = supabase
       .channel(`game:${gameId}`)
@@ -118,10 +159,21 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
         setDrawOffer(null);
       })
       .subscribe((status) => {
-        if (status === "SUBSCRIBED") setConnected(true);
+        if (status === "SUBSCRIBED") {
+          setConnected(true);
+          setError(null);
+          // On (re)connection, immediately fetch the latest state to catch
+          // up on any moves we might have missed while disconnected.
+          fetchGameState();
+        }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           setConnected(false);
           setError("Connection lost. Reconnecting...");
+          // Auto-reconnect after 2 seconds by bumping the reconnect tick
+          if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = setTimeout(() => {
+            setReconnectTick((t) => t + 1);
+          }, 2000);
         }
       });
 
@@ -129,8 +181,34 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
 
     return () => {
       supabase.removeChannel(channel);
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
     };
-  }, [gameId, supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameId, supabase, reconnectTick]);
+
+  // ── Polling fallback — fetch game state every 4 seconds ──────────────────
+  // Realtime (both broadcast and postgres_changes) can silently drop on mobile
+  // networks. This poll ensures we always catch opponent moves even if the
+  // realtime channel is dead. It's a cheap single-row SELECT that short-circuits
+  // when the move count hasn't changed.
+  useEffect(() => {
+    // Initial fetch in case realtime hasn't connected yet
+    fetchGameState();
+
+    pollRef.current = setInterval(() => {
+      // Only poll while the game is still in progress
+      setGame((prev) => {
+        if (prev.status === "playing") {
+          fetchGameState();
+        }
+        return prev;
+      });
+    }, 4000);
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [fetchGameState]);
 
   // Check for timeout (server-side verification, client-callable)
   const checkTimeout = useCallback(async () => {
