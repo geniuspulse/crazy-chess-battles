@@ -113,7 +113,6 @@ export async function POST(req: NextRequest) {
     } else if (isDraw) {
       updateData.draws = (profile.draws || 0) + 1;
     }
-    // Note: resign/timeout losses are counted in losses above since winner is set to the opponent
 
     const { error: updateError } = await supabase
       .from("profiles")
@@ -122,13 +121,23 @@ export async function POST(req: NextRequest) {
 
     if (updateError) {
       console.error("Failed to update player stats:", updateError);
-      // Don't fail the whole request — game was saved
     }
 
     // Award berries if the player won
     let berriesAwarded = 0;
     if (playerWon) {
       berriesAwarded = await awardBotGameBerries(game.id, userId, difficulty);
+    }
+
+    // Trigger referral activation for ALL bot games (win or lose)
+    // This counts toward the 10 quick matches needed to activate a referral
+    try {
+      await supabase.rpc("check_referral_activation", {
+        p_user_id: userId,
+        p_action: "quick_match",
+      });
+    } catch (refErr) {
+      console.error("Referral activation check failed:", refErr);
     }
 
     return NextResponse.json({ success: true, gameId: game.id, berriesAwarded });
