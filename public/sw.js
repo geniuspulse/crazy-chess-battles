@@ -1,4 +1,4 @@
-const CACHE_NAME = "ccb-cache-v2";
+const CACHE_NAME = "ccb-cache-v3";
 const PRECACHE_URLS = [
   "/",
   "/manifest.json",
@@ -14,6 +14,7 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
+  // Delete ALL old caches (including old _next/static chunk caches)
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
@@ -24,32 +25,30 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Network-first for navigation/API, cache-first for static assets
+// Network-first for everything, cache fallback only when offline
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
 
-  // Never cache API/auth/websocket traffic — always go to network
+  // Never intercept API/auth/websocket traffic
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/_next/webpack-hmr")) {
     return;
   }
 
-  // Static assets: cache-first
+  // Static _next/static assets: stale-while-revalidate (network first, cache fallback)
+  // This ensures new deploys get fresh chunks immediately
   if (
     url.pathname.startsWith("/_next/static/") ||
     url.pathname.match(/\.(png|jpg|jpeg|svg|webp|ico|woff2?)$/)
   ) {
     event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached;
-        return fetch(request).then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          return response;
-        });
-      })
+      fetch(request).then((response) => {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        return response;
+      }).catch(() => caches.match(request))
     );
     return;
   }

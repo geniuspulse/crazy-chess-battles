@@ -28,8 +28,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Challenge ID required" }, { status: 400 });
     }
 
-    // Fetch the challenge
-    const { data: challenge, error } = await supabase
+    // Fetch the challenge (use admin to avoid RLS issues)
+    const admin = createAdminClient();
+    const { data: challenge, error } = await admin
       .from("challenges")
       .select("*")
       .eq("id", challengeId)
@@ -50,7 +51,6 @@ export async function POST(req: NextRequest) {
     }
 
     // Atomic claim — only succeeds if status is still 'pending'
-    const admin = createAdminClient();
     const { data: claimed, error: claimError } = await admin
       .from("challenges")
       .update({ status: "accepted", acceptor_id: user.id })
