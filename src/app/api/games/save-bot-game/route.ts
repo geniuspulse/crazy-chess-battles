@@ -18,8 +18,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       userId,
-      difficulty,    // "easy" | "medium" | "hard"
-      playerColor,   // "white" | "black"
+      difficulty,
+      playerColor,
       status,        // "checkmate" | "stalemate" | "draw" | "resign" | "timeout"
       winner,        // "white" | "black" | null
       pgn,
@@ -37,10 +37,10 @@ export async function POST(req: NextRequest) {
 
     const supabase = createAdminClient();
 
-    // Get the player's current rating
+    // Get the player's current profile including games_played, wins, losses, draws
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("id, rating")
+      .select("id, rating, games_played, wins, losses, draws")
       .eq("id", userId)
       .single();
 
@@ -58,15 +58,12 @@ export async function POST(req: NextRequest) {
     const playerRating = profile.rating || 1500;
     const botRating = botProfile?.rating || 1500;
 
-    // Bot games are unrated — no ELO change
     const whitePlayerId = playerColor === "white" ? userId : BOT_USER_ID;
     const blackPlayerId = playerColor === "white" ? BOT_USER_ID : userId;
     const whiteRating = playerColor === "white" ? playerRating : botRating;
     const blackRating = playerColor === "white" ? botRating : playerRating;
 
     const timeControl = classifyTimeControl(initialMinutes);
-
-    // Determine ended_at
     const endedAt = new Date().toISOString();
 
     // Insert the game record
@@ -77,7 +74,7 @@ export async function POST(req: NextRequest) {
         black_player_id: blackPlayerId,
         white_rating: whiteRating,
         black_rating: blackRating,
-        white_rating_change: 0, // Bot games are unrated
+        white_rating_change: 0,
         black_rating_change: 0,
         time_control: timeControl,
         initial_minutes: initialMinutes,
@@ -87,8 +84,8 @@ export async function POST(req: NextRequest) {
         pgn: pgn || null,
         fen: fen || null,
         move_count: moveCount || 0,
-        rated: false, // Bot games are always unrated
-        created_at: new Date(Date.now() - (moveCount || 0) * 3000).toISOString(), // Approximate start time
+        rated: false,
+        created_at: new Date(Date.now() - (moveCount || 0) * 3000).toISOString(),
         ended_at: endedAt,
       })
       .select("id")
@@ -99,13 +96,39 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to save game" }, { status: 500 });
     }
 
+    // Determine player's result
+    const playerWon = (playerColor === "white" && winner === "white") || (playerColor === "black" && winner === "black");
+    const playerLost = (playerColor === "white" && winner === "black") || (playerColor === "black" && winner === "white");
+    const isDraw = winner === null && (status === "draw" || status === "stalemate");
+
+    // Update player's stats: games_played always increments, wins/losses/draws as appropriate
+    const updateData: Record<string, number> = {
+      games_played: (profile.games_played || 0) + 1,
+    };
+
+    if (playerWon) {
+      updateData.wins = (profile.wins || 0) + 1;
+    } else if (playerLost) {
+      updateData.losses = (profile.losses || 0) + 1;
+    } else if (isDraw) {
+      updateData.draws = (profile.draws || 0) + 1;
+    }
+    // Note: resign/timeout losses are counted in losses above since winner is set to the opponent
+
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update(updateData)
+      .eq("id", userId);
+
+    if (updateError) {
+      console.error("Failed to update player stats:", updateError);
+      // Don't fail the whole request — game was saved
+    }
+
     // Award berries if the player won
     let berriesAwarded = 0;
-    if (winner && winner !== null) {
-      const playerWon = (playerColor === "white" && winner === "white") || (playerColor === "black" && winner === "black");
-      if (playerWon) {
-        berriesAwarded = await awardBotGameBerries(game.id, userId, difficulty);
-      }
+    if (playerWon) {
+      berriesAwarded = await awardBotGameBerries(game.id, userId, difficulty);
     }
 
     return NextResponse.json({ success: true, gameId: game.id, berriesAwarded });
