@@ -20,10 +20,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ alreadyAwarded: true });
     }
 
-    // Award 500 berries as welcome bonus
+    // Get welcome bonus amount from config (default 500)
+    const { data: config } = await admin
+      .from("berry_config")
+      .select("welcome_bonus")
+      .limit(1)
+      .single();
+    const bonusAmount = (config as any)?.welcome_bonus ?? 500;
+
     const { error } = await admin.rpc("credit_berries", {
       p_user_id: userId,
-      p_amount: 500,
+      p_amount: bonusAmount,
       p_game_id: null,
       p_description: "Welcome bonus! Thanks for joining Crazy Chess Battles",
     });
@@ -33,7 +40,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, berries: 500 });
+    return NextResponse.json({ success: true, berries: bonusAmount });
   } catch (e: any) {
     console.error("Welcome bonus error:", e);
     return NextResponse.json({ error: e.message }, { status: 500 });
