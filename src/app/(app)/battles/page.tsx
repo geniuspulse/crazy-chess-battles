@@ -115,6 +115,21 @@ export default function BattlesPage() {
       .catch(() => {});
   }, [checkActiveBattle]);
 
+  // Re-fetch the profile (games_played, rating, balance) whenever this tab
+  // regains focus or becomes visible again. A long-lived tab can otherwise
+  // show a stale "games played" count even after playing more games elsewhere.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") loadProfile();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
+
   const handleCancelStuck = async () => {
     if (!activeBattle) return;
     setCancellingStuck(true);

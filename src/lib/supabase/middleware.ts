@@ -65,12 +65,13 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Set no-cache headers for challenge and game pages to prevent edge caching
-  if (request.nextUrl.pathname.startsWith("/challenge") || request.nextUrl.pathname.startsWith("/battle-challenge") || request.nextUrl.pathname.startsWith("/game")) {
-    supabaseResponse.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
-    supabaseResponse.headers.set("CDN-Cache-Control", "no-store");
-    supabaseResponse.headers.set("Vercel-CDN-Cache-Control", "no-store");
-  }
+  // No-cache everywhere: this app is fully dynamic/live (scores, clocks, wallet
+  // balances, games played, etc. must always reflect the latest DB state).
+  // Static assets (_next/static, images) are already excluded by the matcher below.
+  supabaseResponse.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+  supabaseResponse.headers.set("CDN-Cache-Control", "no-store");
+  supabaseResponse.headers.set("Vercel-CDN-Cache-Control", "no-store");
+  supabaseResponse.headers.set("Pragma", "no-cache");
 
   return supabaseResponse;
 }

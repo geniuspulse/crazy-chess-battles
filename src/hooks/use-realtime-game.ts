@@ -49,7 +49,11 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
   const [drawOffer, setDrawOffer] = useState<string | null>(null);
   const [opponentMove, setOpponentMove] = useState<MoveBroadcast | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const lastBroadcastMoveCount = useRef<number>(0);
+  // Shared "last applied move" counter used by BOTH the postgres_changes
+  // handler and the broadcast handler, so a delayed/out-of-order DB change
+  // event can never clobber a newer state with an older FEN (this was
+  // causing pieces to visually jump forward -> backward -> forward).
+  const lastAppliedMoveCount = useRef<number>(initialState.move_count ?? 0);
 
   // Subscribe to real-time updates
   useEffect(() => {
@@ -65,6 +69,18 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
         },
         (payload) => {
           const updated = payload.new as Partial<GameState>;
+          // Ignore stale/out-of-order updates: only apply if this row
+          // version is at least as new as the most recent move we've
+          // already applied locally (covers replication lag / reordering).
+          if (
+            typeof updated.move_count === "number" &&
+            updated.move_count < lastAppliedMoveCount.current
+          ) {
+            return;
+          }
+          if (typeof updated.move_count === "number") {
+            lastAppliedMoveCount.current = updated.move_count;
+          }
           setGame((prev) => ({ ...prev, ...updated } as GameState));
         }
       )
@@ -76,9 +92,9 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
       })
       .on("broadcast", { event: "move" }, (payload: any) => {
         const data = payload.payload as MoveBroadcast;
-        // Only process if this is a new move (avoid duplicate processing)
-        if (data.moveCount > lastBroadcastMoveCount.current) {
-          lastBroadcastMoveCount.current = data.moveCount;
+        // Only process if this is a new move (avoid duplicate/stale processing)
+        if (data.moveCount > lastAppliedMoveCount.current) {
+          lastAppliedMoveCount.current = data.moveCount;
           setOpponentMove(data);
           // Also immediately update game state from the broadcast
           setGame((prev) => ({
@@ -159,6 +175,9 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
         setError(null);
         // Update local state immediately
         if (data.fen) {
+          if (typeof data.moveCount === "number") {
+            lastAppliedMoveCount.current = Math.max(lastAppliedMoveCount.current, data.moveCount);
+          }
           setGame((prev) => ({
             ...prev,
             fen: data.fen,
