@@ -281,6 +281,31 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
     }
   };
 
+
+
+  const handleDeleteUser = async (userId: string, username: string) => {
+    const msg1 = "PERMANENTLY DELETE " + username + "?\n\nThis will remove ALL their data:\n- Profile, auth account, game history\n- Berry balance and transactions\n- Tournament participations\n- Battle records\n- Referrals, deposits, withdrawals\n\nThis CANNOT be undone. Are you absolutely sure?";
+    if (!confirm(msg1)) return;
+    const msg2 = "Last chance \u2014 really delete " + username + "? This is irreversible.";
+    if (!confirm(msg2)) return;
+    setActionLoading(userId + "_delete");
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      await fetchUsers();
+      showToast(data.warning ? "User deleted (partial: " + data.warning + ")" : "User permanently deleted");
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleTournamentAction = async (tournamentId: string, action: string) => {
     if (!confirm(`Are you sure you want to ${action} this tournament?`)) return;
     setActionLoading(`${tournamentId}_${action}`);
@@ -647,7 +672,7 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
                               {u.is_admin && <span className="text-xs px-1.5 py-0.5 rounded bg-ccb-primary/20 text-ccb-primary font-bold">ADMIN</span>}
                               {u.is_banned && <span className="text-xs px-1.5 py-0.5 rounded bg-ccb-danger/20 text-ccb-danger font-bold">BANNED</span>}
                             </div>
-                            <div className="text-xs text-ccb-muted">{u.email} · {u.rating || "Unrated"} elo · {u.games_played || 0} games</div>
+                            <div className="text-xs text-ccb-muted">{u.email} · {u.rating || "Unrated"} elo · {u.games_played || 0} games · W{u.wins || 0}/L{u.losses || 0}/D{u.draws || 0}</div>
                           </div>
                         </div>
                         <div className="text-right">
@@ -707,6 +732,14 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
                           variant="default"
                         >
                           <Cherry className="w-3.5 h-3.5" /> Grant Berries
+                        </ActionButton>
+
+                        <ActionButton
+                          onClick={() => handleDeleteUser(u.id, u.display_name || u.username)}
+                          loading={actionLoading === (u.id + "_delete")}
+                          variant="danger"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Delete
                         </ActionButton>
                       </div>
                     </div>
