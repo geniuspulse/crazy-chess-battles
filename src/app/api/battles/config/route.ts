@@ -7,6 +7,9 @@ import { createClient } from "@/lib/supabase/server";
  * GET: returns current config
  * PUT: updates config
  */
+// GET is used by the public battles page for ALL players to check if
+// Chess Battles are enabled and to read stake levels/time controls.
+// It must NOT be admin-gated — only PUT (updating config) requires admin.
 export async function GET() {
   try {
     const supabase = await createClient();
@@ -14,11 +17,8 @@ export async function GET() {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const admin = createAdminClient();
-    const { data: profile } = await admin.from("profiles").select("is_admin").eq("id", user.id).single();
-    if (!profile?.is_admin) return NextResponse.json({ error: "Admin only" }, { status: 403 });
-
     const { data: config } = await admin.from("battle_config").select("*").limit(1).single();
-    return NextResponse.json(config);
+    return NextResponse.json(config || { enabled: false });
   } catch {
     return NextResponse.json({ error: "Failed to fetch config" }, { status: 500 });
   }

@@ -105,7 +105,14 @@ export default function BattlesPage() {
   useEffect(() => {
     checkActiveBattle();
     loadProfile();
-    fetch("/api/battles/config").then(r => r.json()).then(d => setConfig(d)).catch(() => {});
+    fetch("/api/battles/config")
+      .then(async (r) => {
+        const d = await r.json();
+        // Guard: never treat an error response (e.g. auth failure) as a disabled config
+        if (!r.ok || d?.error) return;
+        setConfig(d);
+      })
+      .catch(() => {});
   }, [checkActiveBattle]);
 
   const handleCancelStuck = async () => {
