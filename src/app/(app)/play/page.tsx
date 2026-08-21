@@ -368,11 +368,16 @@ export default function PlayPage() {
       {/* Secondary actions — no extra menu step */}
       <div className="grid grid-cols-2 gap-3">
         <button
-          onClick={() => setView("challenge")}
-          className="flex items-center justify-center gap-2 rounded-xl border border-ccb-border bg-ccb-card px-4 py-3 text-sm font-medium text-ccb-text hover:border-ccb-accent/40 hover:bg-ccb-surface transition-colors"
+          onClick={handleCreateChallenge}
+          disabled={creatingChallenge}
+          className="flex items-center justify-center gap-2 rounded-xl border border-ccb-border bg-ccb-card px-4 py-3 text-sm font-medium text-ccb-text hover:border-ccb-accent/40 hover:bg-ccb-surface transition-colors disabled:opacity-50"
         >
-          <Link2 className="w-4 h-4 text-ccb-accent" />
-          Challenge a Friend
+          {creatingChallenge ? (
+            <span className="w-4 h-4 border-2 border-ccb-accent border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <Link2 className="w-4 h-4 text-ccb-accent" />
+          )}
+          {creatingChallenge ? "Creating..." : "Challenge a Friend"}
         </button>
         <button
           onClick={() => setView("computer")}

@@ -313,7 +313,7 @@ export default function BattlesPage() {
           </div>
 
           <a href="/play" className="btn-primary inline-block px-8 py-3.5">
-            <Zap className="w-4 h-4 mr-1.5" /> Play a Quick Match
+            Play a Quick Match
           </a>
 
           <p className="text-xs text-ccb-muted mt-4 max-w-sm mx-auto">
