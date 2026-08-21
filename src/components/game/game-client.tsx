@@ -67,6 +67,12 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const lastFenRef = useRef(game.fen);
   const soundPlayedForEnd = useRef(false);
   const prevFenRef = useRef(game.fen);
+  // When true, the upcoming viewPly change was triggered by a game state
+  // update (opponent move, polling sync, etc.) — NOT by the user clicking
+  // back/forward. The [viewPly] effect checks this to skip its setFen call,
+  // preventing a double-update that causes the chessboard to animate a
+  // piece forward, briefly snap back, then forward again.
+  const isGameUpdateRef = useRef(false);
   const { containerRef: boardContainerRef, size: boardSize } = useBoardSize(600, 220);
 
   useLockBodyScroll();
@@ -130,6 +136,9 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   }, [gameEnded]);
 
   useEffect(() => {
+    // Mark that the upcoming setViewPly is from a game state update, not user action.
+    // The [viewPly] effect will skip its setFen call to avoid a double-update flicker.
+    isGameUpdateRef.current = true;
     setFen(game.fen);
     lastFenRef.current = game.fen;
     try {
@@ -155,6 +164,13 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   }, [game.fen, game.pgn]);
 
   useEffect(() => {
+    // If this viewPly change was triggered by a game state update (opponent move,
+    // poll sync), fen was already set correctly by the [game.fen, game.pgn] effect.
+    // Skip this effect entirely to prevent a double setFen that causes piece flicker.
+    if (isGameUpdateRef.current) {
+      isGameUpdateRef.current = false;
+      return;
+    }
     if (viewPly === 0 || moveHistory.length === 0) {
       if (game.pgn) {
         setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
@@ -505,7 +521,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
             allowDragging: !gameEnded && !isSpectator && isLiveView,
             squareStyles: squareStyles,
             showAnimations: true,
-            animationDurationInMs: 300,
+            animationDurationInMs: 150,
             showNotation: true,
             darkSquareNotationStyle: { color: boardTheme.light, fontSize: "10px", fontWeight: 600 },
             lightSquareNotationStyle: { color: boardTheme.dark, fontSize: "10px", fontWeight: 600 },
