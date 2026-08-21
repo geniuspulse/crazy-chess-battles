@@ -213,3 +213,17 @@
 .animate-sheet-up {
   animation: sheet-up 0.18s ease-out;
 }
+
+/* Allow screenshots and screen recording — not too early for this restriction */
+/* Ensure no CSS-level screenshot prevention */
+* {
+  -webkit-user-select: auto;
+  -moz-user-select: auto;
+  user-select: auto;
+}
+
+/* Game board pieces can still be non-selectable for UX */
+.chess-board, .chess-board * {
+  -webkit-user-select: none;
+  user-select: none;
+}

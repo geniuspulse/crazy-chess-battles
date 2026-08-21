@@ -26,13 +26,30 @@ export interface GameState {
   rated: boolean;
 }
 
+export interface MoveBroadcast {
+  from: string;
+  to: string;
+  promotion?: string;
+  fen: string;
+  pgn: string;
+  turn: "white" | "black";
+  status: string;
+  winner: string | null;
+  moveCount: number;
+  whiteClockMs: number | null;
+  blackClockMs: number | null;
+  lastMoveAt: string;
+}
+
 export function useRealtimeGame(gameId: string, initialState: GameState) {
   const supabase = createClient();
   const [game, setGame] = useState<GameState>(initialState);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [drawOffer, setDrawOffer] = useState<string | null>(null);
+  const [opponentMove, setOpponentMove] = useState<MoveBroadcast | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const lastBroadcastMoveCount = useRef<number>(0);
 
   // Subscribe to real-time updates
   useEffect(() => {
@@ -57,7 +74,28 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
       .on("presence", { event: "join" }, () => {
         setConnected(true);
       })
-      .on("broadcast", { event: "draw_offer" }, (payload) => {
+      .on("broadcast", { event: "move" }, (payload: any) => {
+        const data = payload.payload as MoveBroadcast;
+        // Only process if this is a new move (avoid duplicate processing)
+        if (data.moveCount > lastBroadcastMoveCount.current) {
+          lastBroadcastMoveCount.current = data.moveCount;
+          setOpponentMove(data);
+          // Also immediately update game state from the broadcast
+          setGame((prev) => ({
+            ...prev,
+            fen: data.fen,
+            pgn: data.pgn,
+            turn: data.turn,
+            status: data.status,
+            winner: data.winner,
+            move_count: data.moveCount,
+            white_clock_ms: data.whiteClockMs,
+            black_clock_ms: data.blackClockMs,
+            last_move_at: data.lastMoveAt,
+          }));
+        }
+      })
+      .on("broadcast", { event: "draw_offer" }, () => {
         setDrawOffer("offer");
       })
       .on("broadcast", { event: "draw_declined" }, () => {
@@ -91,7 +129,7 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
         if (data.timedOut) {
           setGame((prev) => ({
             ...prev,
-            status: data.status || "timeout", // "timeout" (decisive loss) or "abort" (no-show, no rating hit)
+            status: data.status || "timeout",
             winner: data.winner,
           }));
         }
@@ -119,7 +157,7 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
         }
 
         setError(null);
-        // Realtime will update the state, but we can also update immediately
+        // Update local state immediately
         if (data.fen) {
           setGame((prev) => ({
             ...prev,
@@ -132,6 +170,30 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
             black_clock_ms: data.blackClockMs,
             last_move_at: new Date().toISOString(),
           }));
+
+          // Broadcast the move to the opponent over the realtime channel
+          // This is faster than waiting for Supabase postgres_changes propagation
+          if (channelRef.current) {
+            const moveBroadcast: MoveBroadcast = {
+              from,
+              to,
+              promotion: promotion || "q",
+              fen: data.fen,
+              pgn: data.pgn || "",
+              turn: data.turn,
+              status: data.status || "playing",
+              winner: data.winner,
+              moveCount: data.moveCount,
+              whiteClockMs: data.whiteClockMs,
+              blackClockMs: data.blackClockMs,
+              lastMoveAt: new Date().toISOString(),
+            };
+            channelRef.current.send({
+              type: "broadcast",
+              event: "move",
+              payload: moveBroadcast,
+            });
+          }
         }
         return true;
       } catch {
@@ -203,5 +265,5 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
     setDrawOffer(null);
   }, [gameId]);
 
-  return { game, connected, error, drawOffer, makeMove, resign, checkTimeout, setGame, offerDraw, acceptDraw, declineDraw };
+  return { game, connected, error, drawOffer, makeMove, resign, checkTimeout, setGame, offerDraw, acceptDraw, declineDraw, opponentMove };
 }

@@ -214,6 +214,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       valid: true,
       fen: result.fen,
+      pgn: result.pgn,
       status: result.status || "playing",
       winner: result.winner,
       turn: result.turn,
