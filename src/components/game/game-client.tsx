@@ -249,8 +249,8 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
           const move = tempGame.move({ from: selectedSquare, to: square, promotion: "q" });
           if (move !== null) {
             setFen(tempGame.fen());
-            setMoveHistory(tempGame.history());
-            setViewPly(tempGame.history().length);
+            setMoveHistory((prev) => [...prev, move.san]);
+            setViewPly((prev) => prev + 1);
             setLastMove({ from: selectedSquare, to: square });
             playSound(detectMoveSound(move));
             if (tempGame.inCheck() && !tempGame.isCheckmate()) {
@@ -299,8 +299,8 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
             const move = tempGame.move({ from: selectedSquare, to: square, promotion: "q" });
             if (move !== null) {
               setFen(tempGame.fen());
-              setMoveHistory(tempGame.history());
-              setViewPly(tempGame.history().length);
+              setMoveHistory((prev) => [...prev, move.san]);
+              setViewPly((prev) => prev + 1);
               setLastMove({ from: selectedSquare, to: square });
               playSound(detectMoveSound(move));
               if (tempGame.inCheck() && !tempGame.isCheckmate()) {
@@ -332,8 +332,8 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
           const move = tempGame.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
           if (move === null) return false;
           setFen(tempGame.fen());
-          setMoveHistory(tempGame.history());
-          setViewPly(tempGame.history().length);
+          setMoveHistory((prev) => [...prev, move.san]);
+          setViewPly((prev) => prev + 1);
           setLastMove({ from: sourceSquare, to: targetSquare });
           playSound(detectMoveSound(move));
           if (tempGame.inCheck() && !tempGame.isCheckmate()) {
@@ -364,8 +364,8 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         const move = tempGame.move({ from: pendingPromotion.from, to: pendingPromotion.to, promotion: piece });
         if (move) {
           setFen(tempGame.fen());
-          setMoveHistory(tempGame.history());
-          setViewPly(tempGame.history().length);
+          setMoveHistory((prev) => [...prev, move.san]);
+          setViewPly((prev) => prev + 1);
           setLastMove({ from: pendingPromotion.from, to: pendingPromotion.to });
           playSound(detectMoveSound(move));
         }
@@ -397,7 +397,8 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
             setPendingPromotion({ from: premove.from, to: premove.to });
           } else {
             setFen(game.fen());
-            setMoveHistory(game.history());
+            setMoveHistory((prev) => [...prev, move.san]);
+            setViewPly((prev) => prev + 1);
             setLastMove({ from: premove.from, to: premove.to });
             playSound(detectMoveSound(move));
             makeMove(premove.from, premove.to);
@@ -647,23 +648,27 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         )}
       </div>
 
-      {/* Mobile bottom sheet (Chat + Theme) */}
-      {activeSheet && activeSheet !== "menu" && (
-        <div className="lg:hidden absolute inset-x-2 bottom-16 z-20 max-h-[45%] rounded-xl border border-ccb-border bg-ccb-card shadow-2xl animate-sheet-up flex flex-col overflow-hidden">
-          <div className="flex items-center justify-between px-3 py-2 border-b border-ccb-border shrink-0">
-            <span className="text-sm font-medium">
-              {activeSheet === "chat" ? "Chat" : "Board Theme"}
-            </span>
-            <button onClick={() => setActiveSheet(null)} className="text-ccb-muted hover:text-ccb-primary p-1">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-2 no-scrollbar">
-            {activeSheet === "chat" && <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} />}
-            {activeSheet === "theme" && <BoardThemePicker inline onThemeChange={setBoardTheme} />}
-          </div>
+      {/* Mobile bottom sheet (Chat + Theme) — GameChat stays mounted (just hidden)
+          so its realtime channel subscribes as soon as the game loads, not only
+          once the sheet is opened. Otherwise messages sent before both players
+          have opened chat at least once are silently lost (broadcast has no
+          persistence/history). */}
+      <div className={`lg:hidden absolute inset-x-2 bottom-16 z-20 max-h-[45%] rounded-xl border border-ccb-border bg-ccb-card shadow-2xl flex flex-col overflow-hidden ${activeSheet && activeSheet !== "menu" ? "animate-sheet-up" : "hidden"}`}>
+        <div className="flex items-center justify-between px-3 py-2 border-b border-ccb-border shrink-0">
+          <span className="text-sm font-medium">
+            {activeSheet === "chat" ? "Chat" : "Board Theme"}
+          </span>
+          <button onClick={() => setActiveSheet(null)} className="text-ccb-muted hover:text-ccb-primary p-1">
+            <X className="w-4 h-4" />
+          </button>
         </div>
-      )}
+        <div className="flex-1 overflow-y-auto p-2 no-scrollbar">
+          <div className={`h-full ${activeSheet === "chat" ? "" : "hidden"}`}>
+            <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} />
+          </div>
+          {activeSheet === "theme" && <BoardThemePicker inline onThemeChange={setBoardTheme} />}
+        </div>
+      </div>
 
       {/* Mobile menu dropdown */}
       {activeSheet === "menu" && (
@@ -714,32 +719,31 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
           <button onClick={() => setDesktopTab("chat")} className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${desktopTab === "chat" ? "bg-ccb-primary/10 text-ccb-primary border border-ccb-primary/20" : "text-ccb-muted hover:text-ccb-text border border-transparent"}`}>Chat</button>
         </div>
 
-        {/* Tab content */}
-        {desktopTab === "moves" ? (
-          <>
-            <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar rounded-lg bg-ccb-card border border-ccb-border p-2">
-              <div className="space-y-0.5">
-                {moveHistory.length === 0 && <p className="text-xs text-ccb-muted text-center py-4">No moves yet</p>}
-                {Array.from({ length: Math.ceil(moveHistory.length / 2) }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-1 text-sm rounded-md hover:bg-ccb-surface/50 px-1 py-0.5 transition-colors">
-                    <span className="text-ccb-muted text-xs font-mono w-7 text-right shrink-0">{i + 1}.</span>
-                    <button onClick={() => setViewPly(i * 2 + 1)} className={`font-mono flex-1 text-left rounded px-2 py-0.5 transition-colors ${viewPly === i * 2 + 1 ? "bg-ccb-primary text-white" : "text-ccb-text hover:bg-ccb-surface"}`}>{moveHistory[i * 2] || ""}</button>
-                    {moveHistory[i * 2 + 1] && (
-                      <button onClick={() => setViewPly(i * 2 + 2)} className={`font-mono flex-1 text-left rounded px-2 py-0.5 transition-colors ${viewPly === i * 2 + 2 ? "bg-ccb-primary text-white" : "text-ccb-text hover:bg-ccb-surface"}`}>{moveHistory[i * 2 + 1]}</button>
-                    )}
-                  </div>
-                ))}
-              </div>
+        {/* Tab content — both panels stay mounted (CSS-hidden when inactive) so
+            GameChat's realtime channel subscribes immediately on load rather
+            than only once the Chat tab is first clicked. */}
+        <div className={desktopTab === "moves" ? "contents" : "hidden"}>
+          <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar rounded-lg bg-ccb-card border border-ccb-border p-2">
+            <div className="space-y-0.5">
+              {moveHistory.length === 0 && <p className="text-xs text-ccb-muted text-center py-4">No moves yet</p>}
+              {Array.from({ length: Math.ceil(moveHistory.length / 2) }).map((_, i) => (
+                <div key={i} className="flex items-center gap-1 text-sm rounded-md hover:bg-ccb-surface/50 px-1 py-0.5 transition-colors">
+                  <span className="text-ccb-muted text-xs font-mono w-7 text-right shrink-0">{i + 1}.</span>
+                  <button onClick={() => setViewPly(i * 2 + 1)} className={`font-mono flex-1 text-left rounded px-2 py-0.5 transition-colors ${viewPly === i * 2 + 1 ? "bg-ccb-primary text-white" : "text-ccb-text hover:bg-ccb-surface"}`}>{moveHistory[i * 2] || ""}</button>
+                  {moveHistory[i * 2 + 1] && (
+                    <button onClick={() => setViewPly(i * 2 + 2)} className={`font-mono flex-1 text-left rounded px-2 py-0.5 transition-colors ${viewPly === i * 2 + 2 ? "bg-ccb-primary text-white" : "text-ccb-text hover:bg-ccb-surface"}`}>{moveHistory[i * 2 + 1]}</button>
+                  )}
+                </div>
+              ))}
             </div>
-            <div className="text-center text-xs text-ccb-muted shrink-0 py-1">
-              Move {game.move_count} · {game.time_control}
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 min-h-0 flex flex-col rounded-lg border border-ccb-border overflow-hidden">
-            <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} />
           </div>
-        )}
+          <div className="text-center text-xs text-ccb-muted shrink-0 py-1">
+            Move {game.move_count} · {game.time_control}
+          </div>
+        </div>
+        <div className={`flex-1 min-h-0 flex flex-col rounded-lg border border-ccb-border overflow-hidden ${desktopTab === "chat" ? "" : "hidden"}`}>
+          <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} />
+        </div>
       </div>
     </div>
   );

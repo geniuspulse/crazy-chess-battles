@@ -9,7 +9,7 @@ const FAQ_SECTIONS = [
     questions: [
       {
         q: "Is Crazy Chess Battles free to play?",
-        a: "Yes! You can play unlimited casual games, challenge friends, and join free tournaments without ever depositing money. Paid tournaments are optional — you only spend money when you choose to enter one.",
+        a: "Yes! You can play unlimited casual games and join free tournaments without ever depositing money. Paid tournaments are optional — you only spend money when you choose to enter one.",
       },
       {
         q: "Do I need a Chess.com account?",
@@ -76,7 +76,7 @@ const FAQ_SECTIONS = [
     questions: [
       {
         q: "What rating system does CCB use?",
-        a: "We use the Glicko-2 rating system — the same algorithm Chess.com uses. Your rating adjusts after every rated game based on your opponent's rating and the result. Unrated games (vs computer, casual challenges) don't affect your rating.",
+        a: "We use the Glicko-2 rating system — the same algorithm Chess.com uses. Your rating adjusts after every rated game based on your opponent's rating and the result. Unrated games (vs computer) don't affect your rating.",
       },
       {
         q: "What time controls are available?",

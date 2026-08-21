@@ -55,7 +55,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Redirect to dashboard if already logged in and on auth pages or homepage
-  // But respect the redirect param if present (e.g. coming from a challenge link)
+  // But respect the redirect param if present
   const authOrHomeRoutes = ["/login", "/signup", "/", "/forgot-password", "/reset-password"];
   if (user && authOrHomeRoutes.includes(request.nextUrl.pathname)) {
     const redirect = request.nextUrl.searchParams.get("redirect");

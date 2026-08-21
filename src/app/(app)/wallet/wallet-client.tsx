@@ -418,8 +418,8 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
             <span className="text-sm font-semibold text-red-500">{berries.toLocaleString()} 🍒</span>
           </div>
 
-          {/* Berry redeem section */}
-          {berryConfig.enabled && (
+          {/* Berry redeem section — only shown when user has enough berries */}
+          {berryConfig.enabled && berries >= berryConfig.min_redemption ? (
             <div className="mt-3 pt-3 border-t border-red-500/10">
               <div className="flex items-center gap-2 mb-2">
                 <input
@@ -445,13 +445,11 @@ export default function WalletClient({ balanceCents, berryBalance, email, deposi
                 = {formatMWK(redeemCashValue)} to wallet · 1000🍒 = MWK 500
               </p>
             </div>
-          )}
-
-          {berries < berryConfig.min_redemption && berryConfig.enabled && (
+          ) : berryConfig.enabled ? (
             <div className="text-xs text-ccb-muted mt-2 pt-2 border-t border-red-500/10">
-              <p>Win {berryConfig.min_redemption - berries} more CCB to unlock cash redemption</p>
+              <p>Win {berryConfig.min_redemption - berries} more CCB 🍒 to unlock cash redemption</p>
             </div>
-          )}
+          ) : null}
 
           {/* Referral bonus link */}
           <div className="mt-3 pt-3 border-t border-red-500/10">

@@ -217,6 +217,13 @@ export default function SignupPage() {
           });
           localStorage.removeItem("ccb_ref_code");
         }
+
+        // Award 500 berry welcome bonus to new users
+        await fetch("/api/berry/welcome-bonus", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: data.user.id }),
+        });
       } catch (postErr: any) {
         console.error("Post-signup error:", postErr);
       }

@@ -32,9 +32,10 @@ export default function PlayPage() {
   const [selectedTC, setSelectedTC] = useState("blitz");
   const [rated, setRated] = useState(true);
   const [searchState, setSearchState] = useState<SearchState>("idle");
+  const [copied, setCopied] = useState(false);
   const [challengeUrl, setChallengeUrl] = useState<string | null>(null);
   const [creatingChallenge, setCreatingChallenge] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [challengeCopied, setChallengeCopied] = useState(false);
   const [adminNotified, setAdminNotified] = useState(false);
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty>("medium");
   const [aiColor, setAiColor] = useState<"white" | "black">("white");
@@ -165,6 +166,7 @@ export default function PlayPage() {
     return () => cleanupSearch();
   }, []);
 
+
   const handleCreateChallenge = async () => {
     setCreatingChallenge(true);
     try {
@@ -175,15 +177,17 @@ export default function PlayPage() {
       });
       const data = await response.json();
       if (data.url) setChallengeUrl(data.url);
-    } catch {}
+    } catch {
+      // ignore
+    }
     setCreatingChallenge(false);
   };
 
-  const handleCopyLink = () => {
+  const copyChallengeUrl = () => {
     if (challengeUrl) {
       navigator.clipboard.writeText(challengeUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setChallengeCopied(true);
+      setTimeout(() => setChallengeCopied(false), 2000);
     }
   };
 
@@ -260,65 +264,52 @@ export default function PlayPage() {
     );
   }
 
+
   // ===== Create Challenge view =====
   if (view === "challenge") {
     return (
-      <div className="max-w-2xl mx-auto space-y-6 pb-20 sm:pb-0 animate-slide-up">
-        <button onClick={() => setView("main")} className="text-sm text-ccb-muted hover:text-ccb-text flex items-center gap-1">
+      <div className="max-w-2xl mx-auto space-y-5 pb-20 sm:pb-0 animate-slide-up">
+        <button onClick={() => { setChallengeUrl(null); setView("main"); }} className="text-sm text-ccb-muted hover:text-ccb-text flex items-center gap-1">
           <ChevronRight className="w-4 h-4 rotate-180" /> Back
         </button>
 
-        <div>
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-10 h-10 rounded-xl bg-ccb-accent/15 flex items-center justify-center">
-              <Link2 className="w-5 h-5 text-ccb-accent" />
-            </div>
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold">Create a Challenge</h1>
-              <p className="text-sm text-ccb-muted">Pick your settings, share the link, and wait for a challenger</p>
-            </div>
+        <div className="card p-5 sm:p-6 space-y-5">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold">Challenge a Friend</h1>
+            <p className="text-sm text-ccb-muted mt-1">Pick your settings, share the link, and play when they join</p>
           </div>
-        </div>
 
-        <TimeControlPicker selectedTC={selectedTC} setSelectedTC={setSelectedTC} />
+          <TimeControlPicker selectedTC={selectedTC} setSelectedTC={setSelectedTC} />
+          <RatedToggle rated={rated} setRated={setRated} />
 
-        <RatedToggle rated={rated} setRated={setRated} />
-
-        {challengeUrl ? (
-          <div className="card space-y-4">
-            <div className="flex items-center gap-2 text-sm text-ccb-primary font-medium">
-              <Check className="w-4 h-4" /> Challenge created!
-            </div>
-            <p className="text-sm text-ccb-muted">Share this link with your friend:</p>
-            <div className="flex items-center gap-2">
-              <input
-                readOnly
-                value={challengeUrl}
-                onClick={(e) => (e.target as HTMLInputElement).select()}
-                className="input-field flex-1 text-xs"
-              />
-              <button onClick={handleCopyLink} className="btn-secondary shrink-0 px-3">
-                {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+          {challengeUrl ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm text-ccb-success">
+                <Check className="w-4 h-4" /> Challenge link created!
+              </div>
+              <div className="flex gap-2">
+                <input
+                  readOnly
+                  value={challengeUrl}
+                  className="flex-1 px-3 py-2 rounded-lg bg-ccb-surface border border-ccb-border text-sm text-ccb-muted"
+                />
+                <button onClick={copyChallengeUrl} className="btn-secondary px-4 flex items-center gap-1.5">
+                  {challengeCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {challengeCopied ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              <p className="text-xs text-ccb-muted">
+                Your referral code is automatically included — if they are new, you will get 1000 CCB when they start playing.
+              </p>
+              <button onClick={() => { setChallengeUrl(null); setView("main"); }} className="btn-secondary w-full">
+                Done
               </button>
             </div>
-            {copied && <p className="text-xs text-green-400">Copied to clipboard!</p>}
-            <p className="text-xs text-ccb-muted">
-              The game starts automatically when someone accepts.
-            </p>
-            <button onClick={() => { setChallengeUrl(null); setView("main"); }} className="btn-secondary w-full">
-              Create Another
+          ) : (
+            <button onClick={handleCreateChallenge} disabled={creatingChallenge} className="btn-primary w-full text-base py-3.5">
+              <Link2 className="w-5 h-5 mr-2" /> {creatingChallenge ? "Creating..." : "Create Challenge Link"}
             </button>
-          </div>
-        ) : (
-          <button onClick={handleCreateChallenge} disabled={creatingChallenge} className="btn-primary w-full text-base py-3.5">
-            <Link2 className="w-5 h-5 mr-2" /> {creatingChallenge ? "Creating..." : "Create Challenge Link"}
-          </button>
-        )}
-
-        <div className="text-center">
-          <button onClick={() => router.push("/challenges")} className="text-sm text-ccb-primary hover:underline">
-            Browse open challenges from other players →
-          </button>
+          )}
         </div>
       </div>
     );
@@ -426,7 +417,7 @@ export default function PlayPage() {
       <div className="grid grid-cols-2 gap-3">
         <button
           onClick={() => setView("challenge")}
-          className="flex items-center justify-center gap-2 rounded-xl border border-ccb-border bg-ccb-card px-4 py-3 text-sm font-medium text-ccb-text hover:border-ccb-accent/50 hover:bg-ccb-surface transition-colors"
+          className="flex items-center justify-center gap-2 rounded-xl border border-ccb-border bg-ccb-card px-4 py-3 text-sm font-medium text-ccb-text hover:border-ccb-accent/40 hover:bg-ccb-surface transition-colors"
         >
           <Link2 className="w-4 h-4 text-ccb-accent" />
           Challenge a Friend
@@ -442,13 +433,6 @@ export default function PlayPage() {
 
       {/* Quick links */}
       <div className="flex flex-col sm:flex-row gap-3 pt-1">
-        <button
-          onClick={() => router.push("/challenges")}
-          className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-ccb-border bg-ccb-surface px-4 py-3 text-sm font-medium text-ccb-text hover:border-ccb-primary/40 transition-colors"
-        >
-          <Users className="w-4 h-4 text-ccb-primary" />
-          Browse Open Challenges
-        </button>
         <button
           onClick={() => router.push("/battles")}
           className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-ccb-border bg-ccb-surface px-4 py-3 text-sm font-medium text-ccb-text hover:border-ccb-accent/40 transition-colors"

@@ -156,7 +156,7 @@ export default async function LandingPage({ searchParams }: { searchParams: Prom
               </div>
               <div className="text-ccb-muted text-sm font-mono mb-2">Step 03</div>
               <h3 className="font-semibold mb-2">Play & win</h3>
-              <p className="text-sm text-ccb-muted">Jump into quick match, challenge friends, or enter tournaments. Win and get paid to your wallet.</p>
+              <p className="text-sm text-ccb-muted">Jump into quick match or enter tournaments. Win and get paid to your wallet.</p>
             </div>
           </div>
 

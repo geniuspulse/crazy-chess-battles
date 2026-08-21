@@ -44,9 +44,10 @@ export async function POST(req: NextRequest) {
 
     const { data: profile } = await admin
       .from("profiles")
-      .select("wallet_balance_cents, games_played")
+      .select("wallet_balance_cents, games_played, referral_code, username")
       .eq("id", user.id)
       .single();
+    const referralCode = profile?.referral_code || profile?.username || null;
 
     if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
@@ -120,10 +121,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Failed to create challenge" }, { status: 500 });
       }
 
+      const refUrl = referralCode
+        ? `${process.env.NEXT_PUBLIC_SITE_URL || "https://crazychessbattles.live"}/battle-challenge/${retryChallenge.id}?ref=${referralCode}`
+        : `${process.env.NEXT_PUBLIC_SITE_URL || "https://crazychessbattles.live"}/battle-challenge/${retryChallenge.id}`;
       return NextResponse.json({
         challengeId: retryChallenge.id,
         timeControl,
-        url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://crazychessbattles.live"}/battle-challenge/${retryChallenge.id}`,
+        url: refUrl,
       });
     }
 
@@ -132,10 +136,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to create challenge" }, { status: 500 });
     }
 
+    const finalUrl = referralCode
+      ? `${process.env.NEXT_PUBLIC_SITE_URL || "https://crazychessbattles.live"}/battle-challenge/${challenge.id}?ref=${referralCode}`
+      : `${process.env.NEXT_PUBLIC_SITE_URL || "https://crazychessbattles.live"}/battle-challenge/${challenge.id}`;
     return NextResponse.json({
       challengeId: challenge.id,
       timeControl,
-      url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://crazychessbattles.live"}/battle-challenge/${challenge.id}`,
+      url: finalUrl,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Server error" }, { status: 500 });

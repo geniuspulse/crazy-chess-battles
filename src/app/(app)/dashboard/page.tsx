@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import Link from "next/link";
-import { Swords, Trophy, TrendingUp, Wallet, Zap, Share2, ChevronRight, Cherry, Gift } from "lucide-react";
+import { Swords, Trophy, TrendingUp, Wallet, Zap, ChevronRight, Cherry, Gift } from "lucide-react";
 
 const LEVEL_RATINGS: Record<string, number> = {
   beginner: 400,
@@ -108,22 +108,6 @@ export default async function DashboardPage() {
             </div>
           </div>
           <ChevronRight className="w-6 h-6 text-white/70 group-hover:translate-x-1 transition-transform shrink-0" />
-        </div>
-      </Link>
-
-      {/* Challenge a Friend */}
-      <Link href="/play?tab=challenge" className="block card card-hover group p-3 sm:p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-ccb-accent/10 flex items-center justify-center shrink-0">
-              <Share2 className="w-5 h-5 sm:w-6 sm:h-6 text-ccb-accent" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-bold text-base sm:text-lg">Challenge a Friend</h3>
-              <p className="text-xs sm:text-sm text-ccb-muted truncate">Send a link, play instantly</p>
-            </div>
-          </div>
-          <ChevronRight className="w-5 h-5 text-ccb-muted group-hover:translate-x-1 transition-transform shrink-0 ml-2" />
         </div>
       </Link>
 
