@@ -3,21 +3,29 @@
   "framework": "nextjs",
   "env": {
     "NEXT_PUBLIC_SUPABASE_URL": "https://jykrncwtrmegmzimqekf.supabase.co",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5a3JuY3d0cm1lZ216aW1xZWtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5NDU5MDgsImV4cCI6MjEwMDUyMTkwOH0.GqVNE0xi-SBcHqNCDX-hTPSM_wJ89BCbLZutcHWj93k",
-    "SUPABASE_SERVICE_ROLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5a3JuY3d0cm1lZ216aW1xZWtmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NDk0NTkwOCwiZXhwIjoyMTAwNTIxOTA4fQ.AYzEF9SaTUyJlITJedioRKer0mPMhYKShVhBX2-WOj0"
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5a3JuY3d0cm1lZ216aW1xZWtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5NDU5MDgsImV4cCI6MjEwMDUyMTkwOH0.GqVNE0xi-SBcHqNCDX-hTPSM_wJ89BCbLZutcHWj93k"
   },
   "headers": [
     {
       "source": "/sw.js",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
-        { "key": "Service-Worker-Allowed", "value": "/" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        },
+        {
+          "key": "Service-Worker-Allowed",
+          "value": "/"
+        }
       ]
     },
     {
       "source": "/manifest.json",
       "headers": [
-        { "key": "Content-Type", "value": "application/manifest+json" }
+        {
+          "key": "Content-Type",
+          "value": "application/manifest+json"
+        }
       ]
     }
   ]

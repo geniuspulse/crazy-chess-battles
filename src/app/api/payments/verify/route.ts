@@ -30,10 +30,18 @@ export async function POST(req: NextRequest) {
 
     if (!deposit) return NextResponse.json({ error: "Deposit not found" }, { status: 404 });
     if (deposit.user_id !== user.id) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    if (deposit.status === "success") return NextResponse.json({ status: "success", depositId: deposit.id, amount: deposit.amount_cents });
+
+    // Already successfully processed — return immediately (idempotent)
+    if (deposit.status === "success") {
+      return NextResponse.json({ status: "success", depositId: deposit.id, amount: deposit.amount_cents });
+    }
+
+    // Already being processed by another request — return pending
+    if (deposit.status === "processing") {
+      return NextResponse.json({ status: "pending", depositId: deposit.id });
+    }
 
     // Correct PayChangu endpoints per https://developer.paychangu.com/docs/charge-verification
-    // and https://developer.paychangu.com/reference/verify-transaction-status
     let verifyUrl: string;
     if (deposit.method === "mobile_money") {
       verifyUrl = `https://api.paychangu.com/mobile-money/payments/${chargeId}/verify`;
@@ -49,17 +57,34 @@ export async function POST(req: NextRequest) {
     });
 
     const data = await res.json();
-
     const remoteStatus = data.data?.status || data.status;
 
     if (remoteStatus === "success" || remoteStatus === "successful") {
+      // ATOMIC GUARD: claim this deposit by atomically moving it from "pending" to "processing"
+      // If another concurrent request already claimed it, this returns 0 rows and we skip crediting
+      const { data: claimed, error: claimErr } = await admin
+        .from("deposits")
+        .update({ status: "processing", updated_at: new Date().toISOString() })
+        .eq("id", deposit.id)
+        .eq("status", "pending")
+        .select("id");
+
+      if (claimErr || !claimed || claimed.length === 0) {
+        // Another request is already processing or has processed this deposit
+        return NextResponse.json({ status: "success", depositId: deposit.id, amount: deposit.amount_cents });
+      }
+
+      // We won the race — safe to credit the wallet
       await admin.rpc("credit_wallet", {
         p_user_id: user.id,
         p_amount_cents: deposit.amount_cents,
       });
+
+      // Mark as success
       await admin.from("deposits")
         .update({ status: "success", updated_at: new Date().toISOString() })
         .eq("id", deposit.id);
+
       return NextResponse.json({ status: "success", depositId: deposit.id, amount: deposit.amount_cents });
     }
 

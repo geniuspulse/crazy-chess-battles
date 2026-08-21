@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { settleBattle } from "@/lib/battles/settle";
 
 /**
@@ -7,11 +8,33 @@ import { settleBattle } from "@/lib/battles/settle";
  * Called server-side after a game ends (from game resign/timeout/move API).
  * Body: { battleId: string, winnerId: string | null, result: string }
  * winnerId null = draw (triggers armageddon)
+ *
+ * Authentication: the caller must be authenticated AND be a participant in the
+ * battle (white or black player). This prevents anyone from triggering
+ * arbitrary battle settlements.
  */
 export async function POST(req: NextRequest) {
   try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const { battleId, winnerId, result } = await req.json();
     if (!battleId) return NextResponse.json({ error: "Battle ID required" }, { status: 400 });
+
+    // Verify the caller is a participant in this battle
+    const admin = createAdminClient();
+    const { data: battle } = await admin
+      .from("battles")
+      .select("white_player_id, black_player_id")
+      .eq("id", battleId)
+      .single();
+
+    if (!battle) return NextResponse.json({ error: "Battle not found" }, { status: 404 });
+
+    if (battle.white_player_id !== user.id && battle.black_player_id !== user.id) {
+      return NextResponse.json({ error: "Not a battle participant" }, { status: 403 });
+    }
 
     const outcome = await settleBattle(battleId, winnerId, result);
     return NextResponse.json(outcome);

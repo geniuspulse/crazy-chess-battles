@@ -4,7 +4,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 // PayChangu signs webhooks with HMAC-SHA256 of the raw JSON body, using the
 // webhook secret from the dashboard. The digest is sent in the "Signature" header.
-// See: https://developer.paychangu.com/docs/webhooks
 function isValidSignature(rawBody: string, signatureHeader: string | null, secret: string): boolean {
   if (!signatureHeader) return false;
 
@@ -70,7 +69,21 @@ export async function POST(req: NextRequest) {
     }
 
     if (status === "success") {
-      // Credit wallet atomically (RPC avoids read-then-write race)
+      // ATOMIC GUARD: atomically claim from "pending" to "processing"
+      // Prevents double-credit if webhook + client verify race
+      const { data: claimed, error: claimErr } = await admin
+        .from("deposits")
+        .update({ status: "processing", updated_at: new Date().toISOString() })
+        .eq("id", deposit.id)
+        .eq("status", "pending")
+        .select("id");
+
+      if (claimErr || !claimed || claimed.length === 0) {
+        // Another request already claimed this deposit
+        return NextResponse.json({ received: true, message: "Already processing" });
+      }
+
+      // We won the race — credit wallet
       await admin.rpc("credit_wallet", {
         p_user_id: deposit.user_id,
         p_amount_cents: deposit.amount_cents,

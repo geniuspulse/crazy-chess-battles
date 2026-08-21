@@ -31,7 +31,7 @@ export async function settleBattle(
 
   if (!battle) throw new Error("Battle not found");
 
-  // Prevent double settlement
+  // Prevent double settlement (early check for performance)
   if (battle.settled) {
     return { settled: true, result: "already_settled" };
   }
@@ -43,16 +43,9 @@ export async function settleBattle(
 
     if (battle.armageddon_round >= maxRounds) {
       // Max armageddon rounds reached — split the pot (refund both stakes)
-      await admin.rpc("credit_wallet", {
-        p_user_id: battle.white_player_id,
-        p_amount_cents: battle.stake_cents,
-      });
-      await admin.rpc("credit_wallet", {
-        p_user_id: battle.black_player_id,
-        p_amount_cents: battle.stake_cents,
-      });
 
-      await admin
+      // ATOMIC GUARD: only update if not already settled
+      const { data: updated, error: guardErr } = await admin
         .from("battles")
         .update({
           status: "completed",
@@ -61,7 +54,24 @@ export async function settleBattle(
           completed_at: new Date().toISOString(),
           notes: "Refunded after max armageddon rounds",
         })
-        .eq("id", battleId);
+        .eq("id", battleId)
+        .eq("settled", false)
+        .select("id");
+
+      if (guardErr || !updated || updated.length === 0) {
+        // Someone else already settled this battle
+        return { settled: true, result: "already_settled" };
+      }
+
+      // We won the race — safe to refund
+      await admin.rpc("credit_wallet", {
+        p_user_id: battle.white_player_id,
+        p_amount_cents: battle.stake_cents,
+      });
+      await admin.rpc("credit_wallet", {
+        p_user_id: battle.black_player_id,
+        p_amount_cents: battle.stake_cents,
+      });
 
       // Trigger referral activation for both players (non-fatal)
       try {
@@ -126,7 +136,28 @@ export async function settleBattle(
     throw new Error("Invalid winner");
   }
 
-  // Pay the winner
+  // ATOMIC GUARD: mark as settled FIRST, only if not already settled.
+  // This prevents the race where two concurrent calls both see settled=false
+  // and both credit the winner. The UPDATE is atomic at the DB level.
+  const { data: claimed, error: claimErr } = await admin
+    .from("battles")
+    .update({
+      status: "completed",
+      winner_id: winnerId,
+      result: result || "win",
+      settled: true,
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", battleId)
+    .eq("settled", false)
+    .select("id");
+
+  if (claimErr || !claimed || claimed.length === 0) {
+    // Someone else already settled this battle
+    return { settled: true, result: "already_settled" };
+  }
+
+  // We won the race — battle is now marked as settled. Safe to pay the winner.
   const payout = battle.winner_payout_cents;
   const { error: creditErr } = await admin.rpc("credit_wallet", {
     p_user_id: winnerId,
@@ -134,8 +165,12 @@ export async function settleBattle(
   });
 
   if (creditErr) {
-    console.error("Winner payout failed:", creditErr);
-    throw new Error("Failed to pay winner");
+    console.error("Winner payout failed (battle already marked settled):", creditErr);
+    // Battle is marked settled but payout failed — log for manual review
+    // Don't throw here because that could trigger a retry which would see settled=true
+    // and skip the payout entirely. Instead, record the error for manual intervention.
+    console.error(`MANUAL INTERVENTION NEEDED: Battle ${battleId} marked settled but payout of ${payout} to ${winnerId} failed`);
+    throw new Error("Failed to pay winner — battle marked as settled, manual intervention needed");
   }
 
   // Record payout (non-fatal audit trail)
@@ -147,18 +182,6 @@ export async function settleBattle(
     reference: `battle:${battleId}:payout`,
   });
   if (_depErr) console.error("Deposit audit log failed:", _depErr);
-
-  // Mark battle as completed and settled
-  await admin
-    .from("battles")
-    .update({
-      status: "completed",
-      winner_id: winnerId,
-      result: result || "win",
-      settled: true,
-      completed_at: new Date().toISOString(),
-    })
-    .eq("id", battleId);
 
   // Release escrow
   await admin
