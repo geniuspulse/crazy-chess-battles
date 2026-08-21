@@ -54,6 +54,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const [moveHistory, setMoveHistory] = useState<string[]>([]);
   const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
   const [viewPly, setViewPly] = useState(0);
+  const [reviewFen, setReviewFen] = useState<string | null>(null);
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   const [boardTheme, setBoardTheme] = useState<BoardTheme>(getStoredBoardTheme());
@@ -67,12 +68,6 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const lastFenRef = useRef(game.fen);
   const soundPlayedForEnd = useRef(false);
   const prevFenRef = useRef(game.fen);
-  // When true, the upcoming viewPly change was triggered by a game state
-  // update (opponent move, polling sync, etc.) — NOT by the user clicking
-  // back/forward. The [viewPly] effect checks this to skip its setFen call,
-  // preventing a double-update that causes the chessboard to animate a
-  // piece forward, briefly snap back, then forward again.
-  const isGameUpdateRef = useRef(false);
   const { containerRef: boardContainerRef, size: boardSize } = useBoardSize(600, 220);
 
   useLockBodyScroll();
@@ -89,6 +84,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const gameEnded = game.status !== "playing";
 
   const isLiveView = moveHistory.length === 0 || viewPly >= moveHistory.length;
+  const displayFen = reviewFen ?? fen;
 
   useEffect(() => {
     if (gameEnded) return;
@@ -106,8 +102,8 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
 
   const myRatingChange = isWhite ? game.white_rating_change : game.black_rating_change;
 
-  const captured = useMemo(() => getCapturedPieces(fen), [fen]);
-  const checkSquare = useMemo(() => getCheckSquare(fen), [fen]);
+  const captured = useMemo(() => getCapturedPieces(displayFen), [displayFen]);
+  const checkSquare = useMemo(() => getCheckSquare(displayFen), [displayFen]);
 
   useEffect(() => {
     if (prevFenRef.current !== game.fen && !pendingPromotion) {
@@ -136,9 +132,6 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   }, [gameEnded]);
 
   useEffect(() => {
-    // Mark that the upcoming setViewPly is from a game state update, not user action.
-    // The [viewPly] effect will skip its setFen call to avoid a double-update flicker.
-    isGameUpdateRef.current = true;
     setFen(game.fen);
     lastFenRef.current = game.fen;
     try {
@@ -163,23 +156,14 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
     }
   }, [game.fen, game.pgn]);
 
+  // Show past position when reviewing moves (same pattern as computer game)
   useEffect(() => {
-    // If this viewPly change was triggered by a game state update (opponent move,
-    // poll sync), fen was already set correctly by the [game.fen, game.pgn] effect.
-    // Skip this effect entirely to prevent a double setFen that causes piece flicker.
-    if (isGameUpdateRef.current) {
-      isGameUpdateRef.current = false;
-      return;
-    }
     if (viewPly === 0 || moveHistory.length === 0) {
-      if (game.pgn) {
-        setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-        setLastMove(null);
-      }
+      setReviewFen(null);
       return;
     }
     if (viewPly >= moveHistory.length) {
-      setFen(game.fen);
+      setReviewFen(null);
       return;
     }
     try {
@@ -187,12 +171,14 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
       for (let i = 0; i < viewPly; i++) {
         tempGame.move(moveHistory[i]);
       }
-      setFen(tempGame.fen());
+      setReviewFen(tempGame.fen());
       const verbose = tempGame.history({ verbose: true });
       const last = verbose[verbose.length - 1];
       setLastMove(last ? { from: last.from, to: last.to } : null);
-    } catch {}
-  }, [viewPly]); // eslint-disable-line react-hooks/exhaustive-deps
+    } catch {
+      setReviewFen(null);
+    }
+  }, [viewPly, moveHistory]);
 
   const squareStyles = useMemo(() => {
     const styles: Record<string, React.CSSProperties> = {};
@@ -512,7 +498,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
       <div ref={boardContainerRef} className="flex-1 min-h-0 flex items-center justify-center px-2 py-1">
         <div style={{ width: boardSize, height: boardSize }}>
           <Chessboard options={{
-            position: fen,
+            position: displayFen,
             boardOrientation: isWhite || isSpectator ? "white" : "black",
             onPieceDrop: ({ sourceSquare, targetSquare }) => {
               if (!targetSquare) return false;
@@ -556,7 +542,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
       {!isLiveView && moveHistory.length > 0 && (
         <div className="max-w-[600px] mx-auto w-full px-2">
           <button
-            onClick={() => setViewPly(moveHistory.length)}
+            onClick={() => { setReviewFen(null); setViewPly(moveHistory.length); }}
             className="w-full text-center text-xs text-ccb-primary hover:underline py-1"
           >
             ← Return to live position
