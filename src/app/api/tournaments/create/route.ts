@@ -78,6 +78,16 @@ export async function POST(req: NextRequest) {
 
     const admin = createAdminClient();
 
+    // Check if creator is an admin — admins publish directly, non-admins need approval
+    const { data: creatorProfile } = await admin
+      .from("profiles")
+      .select("is_admin")
+      .eq("id", user.id)
+      .single();
+
+    const isCreatorAdmin = creatorProfile?.is_admin ?? false;
+    const initialStatus = isCreatorAdmin ? "upcoming" : "pending_approval";
+
     const { data: tournament, error } = await admin
       .from("tournaments")
       .insert({
@@ -94,13 +104,13 @@ export async function POST(req: NextRequest) {
         starts_at: startsAt,
         ends_at: endsAt || null,
         entry_fee_cents: Number(entryFeeCents || 0),
-        prize_pool_cents: isPaid ? 0 : Number(entryFeeCents || 0), // Paid: starts at 0, grows as players join. Free: 0
+        prize_pool_cents: isPaid ? 0 : Number(entryFeeCents || 0),
         creator_profit_percent: isPaid ? profitPercent : 0,
         prize_distribution: { type: "percentage", payouts },
         min_rating: Number(minRating || 0),
         max_rating: maxRating ? Number(maxRating) : null,
         created_by: user.id,
-        status: "upcoming",
+        status: initialStatus,
       })
       .select()
       .single();
@@ -109,7 +119,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, tournament });
+    return NextResponse.json({
+      success: true,
+      tournament,
+      pendingApproval: !isCreatorAdmin,
+      message: isCreatorAdmin
+        ? undefined
+        : "Tournament created! It's pending admin approval. You'll be notified once it's approved.",
+    });
   } catch (e: any) {
     return NextResponse.json(
       { error: e.message || "Failed to create tournament" },

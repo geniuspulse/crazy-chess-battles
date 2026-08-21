@@ -41,14 +41,18 @@ export async function PATCH(req: NextRequest) {
       "stake_cents", "platform_fee_pct", "rating_range",
       "initial_minutes", "increment_seconds", "armageddon_pct",
       "max_armageddon_rounds", "queue_timeout_s",
+      "stake_levels", "enabled", "min_games_for_battles"
     ];
 
     const cleanUpdates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
         const val = updates[field];
-        // Validate numeric fields
-        if (typeof val === "number" && val >= 0) {
+        if (field === "enabled" && typeof val === "boolean") {
+          cleanUpdates[field] = val;
+        } else if (field === "stake_levels" && Array.isArray(val)) {
+          cleanUpdates[field] = val.map((n) => Number(n)).filter((n) => !isNaN(n));
+        } else if (typeof val === "number" && val >= 0) {
           cleanUpdates[field] = val;
         }
       }

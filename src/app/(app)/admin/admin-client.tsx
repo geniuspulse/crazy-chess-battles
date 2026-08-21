@@ -23,12 +23,16 @@ interface Withdrawal {
 interface Stats {
   totalUsers: number;
   gamesToday: number;
+  totalGames?: number;
   activeTournaments: number;
   pendingWithdrawals: number;
+  pendingTournamentApprovals?: number;
   totalDeposits: number;
   totalWithdrawals: number;
   totalPrizePools: number;
   walletLiquidity: number;
+  totalBattleVolume?: number;
+  platformRevenue?: number;
 }
 
 interface UserInfo {
@@ -462,10 +466,21 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
   const saveBattleConfig = async () => {
     setBattleConfigSaving(true);
     try {
+      let stakeLevels = battleConfig?.stake_levels;
+      if (typeof stakeLevels === "string") {
+        stakeLevels = stakeLevels
+          .split(",")
+          .map((s: string) => parseInt(s.trim(), 10))
+          .filter((n: number) => !isNaN(n));
+      }
+      const payload = {
+        ...battleConfig,
+        stake_levels: stakeLevels,
+      };
       const res = await fetch("/api/admin/battle-config", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(battleConfig),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
@@ -490,7 +505,7 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
     { id: "overview", label: "Overview", icon: LayoutDashboard },
     { id: "users", label: "Users", icon: Users },
     { id: "withdrawals", label: "Withdrawals", icon: ArrowDownUp, badge: stats?.pendingWithdrawals },
-    { id: "tournaments", label: "Tournaments", icon: Trophy },
+    { id: "tournaments", label: "Tournaments", icon: Trophy, badge: stats?.pendingTournamentApprovals || undefined },
     { id: "games", label: "Games", icon: Gamepad2 },
     { id: "deposits", label: "Deposits", icon: DollarSign },
     { id: "battles", label: "Battles", icon: Swords },
@@ -554,12 +569,16 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
                 <StatCard icon={Trophy} label="Active Tournaments" value={stats.activeTournaments || 0} color="text-ccb-accent" />
                 <StatCard icon={TrendingUp} label="Games Today" value={stats.gamesToday || 0} color="text-ccb-success" />
                 <StatCard icon={AlertCircle} label="Pending Withdrawals" value={stats.pendingWithdrawals || 0} color="text-ccb-danger" />
+                <StatCard icon={Gamepad2} label="Total Games" value={stats.totalGames || 0} color="text-ccb-primary" />
+                <StatCard icon={Trophy} label="Pending Approvals" value={stats.pendingTournamentApprovals || 0} color="text-amber-500" />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-4">
                 <StatCard icon={DollarSign} label="Total Deposits" value={formatMWK(stats.totalDeposits)} color="text-ccb-success" />
                 <StatCard icon={ArrowDownUp} label="Total Withdrawals" value={formatMWK(stats.totalWithdrawals)} color="text-ccb-accent" />
                 <StatCard icon={Wallet} label="Wallet Liquidity" value={formatMWK(stats.walletLiquidity)} color="text-ccb-primary" />
+                <StatCard icon={Swords} label="Battle Volume" value={formatMWK(stats.totalBattleVolume || 0)} color="text-ccb-accent" />
+                <StatCard icon={Coins} label="Platform Revenue" value={formatMWK(stats.platformRevenue || 0)} color="text-ccb-success" />
               </div>
 
               <div className="card">
@@ -787,6 +806,8 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
                               t.status === "upcoming" ? "bg-ccb-accent/10 text-ccb-accent" :
                               t.status === "finished" ? "bg-ccb-muted/10 text-ccb-muted" :
                               t.status === "cancelled" ? "bg-ccb-danger/10 text-ccb-danger" :
+                              t.status === "pending_approval" ? "bg-amber-500/10 text-amber-500" :
+                              t.status === "rejected" ? "bg-red-500/10 text-red-500" :
                               "bg-ccb-surface text-ccb-muted"
                             }`}>{t.status}</span>
                           </div>
@@ -806,6 +827,32 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
                       </div>
 
                       <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-ccb-border">
+                        {/* Approve — pending_approval only */}
+                        {t.status === "pending_approval" && (
+                          <>
+                            <button
+                              onClick={() => handleTournamentAction(t.id, "approve")}
+                              disabled={actionLoading === `${t.id}_approve`}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-ccb-success text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                            >
+                              {actionLoading === `${t.id}_approve` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm("Reject this tournament? Any paid entry fees will be refunded.")) {
+                                  handleTournamentAction(t.id, "reject");
+                                }
+                              }}
+                              disabled={actionLoading === `${t.id}_reject`}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-ccb-danger text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                            >
+                              {actionLoading === `${t.id}_reject` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                              Reject
+                            </button>
+                          </>
+                        )}
+
                         {/* Edit — only for upcoming */}
                         {t.status === "upcoming" && (
                           <button
@@ -1264,11 +1311,46 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
                     <h3 className="font-medium">Battle Configuration</h3>
                   </div>
 
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="battle-enabled"
+                      checked={battleConfig.enabled ?? true}
+                      onChange={(e) => setBattleConfig({ ...battleConfig, enabled: e.target.checked })}
+                      className="w-4 h-4 rounded"
+                    />
+                    <label htmlFor="battle-enabled" className="text-sm font-medium cursor-pointer">
+                      Enable Chess Battles
+                    </label>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <label className="text-xs text-ccb-muted mb-1 block">
+                        Stake Levels (MWK cents, comma-separated)
+                      </label>
+                      <input
+                        type="text"
+                        value={
+                          typeof battleConfig.stake_levels === "string"
+                            ? battleConfig.stake_levels
+                            : Array.isArray(battleConfig.stake_levels)
+                            ? battleConfig.stake_levels.join(", ")
+                            : ""
+                        }
+                        onChange={(e) =>
+                          setBattleConfig({ ...battleConfig, stake_levels: e.target.value })
+                        }
+                        placeholder="50000, 100000, 250000, 500000, 1000000"
+                        className="w-full px-3 py-2 rounded-lg bg-ccb-surface border border-ccb-border text-sm"
+                      />
+                    </div>
                     <ConfigInput
-                      label="Stake (MWK cents)"
-                      value={battleConfig.stake_cents}
-                      onChange={(v) => setBattleConfig({ ...battleConfig, stake_cents: v })}
+                      label="Min Games for Battles"
+                      value={battleConfig.min_games_for_battles}
+                      onChange={(v) =>
+                        setBattleConfig({ ...battleConfig, min_games_for_battles: v })
+                      }
                     />
                     <ConfigInput
                       label="Platform Fee (%)"
@@ -1318,21 +1400,59 @@ export default function AdminDashboard({ adminName }: { adminName: string }) {
                 </div>
               )}
 
-              {battleStats?.totals && (
+              {battleStats?.stats && (
                 <div className="card space-y-3">
                   <h3 className="font-medium text-sm text-ccb-muted uppercase tracking-wide">Battle Stats</h3>
-                  <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                     <div>
-                      <p className="text-2xl font-bold text-ccb-primary">{battleStats.totals.total || 0}</p>
+                      <p className="text-2xl font-bold text-ccb-primary">
+                        {(battleStats.stats.completedBattles || 0) +
+                          (battleStats.stats.activeBattles || 0) +
+                          (battleStats.stats.disputedBattles || 0)}
+                      </p>
                       <p className="text-xs text-ccb-muted">Total</p>
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-ccb-success">{battleStats.totals.completed || 0}</p>
+                      <p className="text-2xl font-bold text-ccb-success">
+                        {battleStats.stats.completedBattles || 0}
+                      </p>
                       <p className="text-xs text-ccb-muted">Completed</p>
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-ccb-accent">{battleStats.totals.active || 0}</p>
+                      <p className="text-2xl font-bold text-ccb-accent">
+                        {battleStats.stats.activeBattles || 0}
+                      </p>
                       <p className="text-xs text-ccb-muted">Active</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-ccb-danger">
+                        {battleStats.stats.disputedBattles || 0}
+                      </p>
+                      <p className="text-xs text-ccb-muted">Disputed</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-ccb-text">
+                        {formatMWK(battleStats.stats.totalVolume)}
+                      </p>
+                      <p className="text-xs text-ccb-muted">Total Volume</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-ccb-success">
+                        {formatMWK(battleStats.stats.totalRevenue)}
+                      </p>
+                      <p className="text-xs text-ccb-muted">Platform Revenue</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-ccb-accent">
+                        {formatMWK(battleStats.stats.lockedFunds)}
+                      </p>
+                      <p className="text-xs text-ccb-muted">Locked Funds</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-ccb-primary">
+                        {battleStats.stats.waitingPlayers || 0}
+                      </p>
+                      <p className="text-xs text-ccb-muted">Waiting</p>
                     </div>
                   </div>
                 </div>

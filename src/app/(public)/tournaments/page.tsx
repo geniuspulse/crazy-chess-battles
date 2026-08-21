@@ -54,8 +54,16 @@ export default async function TournamentsPage() {
     .order("starts_at", { ascending: false })
     .limit(20);
 
+  // Filter out pending_approval and rejected tournaments unless admin or creator
+  const visibleTournaments = (tournaments || []).filter(t => {
+    if (t.status === "pending_approval" || t.status === "rejected") {
+      return isAdmin || (user && t.created_by === user.id);
+    }
+    return true;
+  });
+
   // Fetch creator profiles for user-created tournaments
-  const creatorIds = (tournaments || [])
+  const creatorIds = visibleTournaments
     .filter(t => t.creator_profit_percent > 0 && t.created_by)
     .map(t => t.created_by);
 
@@ -75,6 +83,8 @@ export default async function TournamentsPage() {
     active: "text-ccb-success bg-ccb-success/10 border-ccb-success/20",
     finished: "text-ccb-muted bg-ccb-surface border-ccb-muted/20",
     cancelled: "text-ccb-danger bg-ccb-danger/10 border-ccb-danger/20",
+    pending_approval: "text-amber-500 bg-amber-500/10 border-amber-500/20",
+    rejected: "text-red-500 bg-red-500/10 border-red-500/20",
   };
 
   return (
@@ -96,9 +106,9 @@ export default async function TournamentsPage() {
         )}
       </div>
 
-      {tournaments && tournaments.length > 0 ? (
+      {visibleTournaments.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {tournaments.map((t) => {
+          {visibleTournaments.map((t) => {
             const participantCount = Array.isArray(t.tournament_participants)
               ? (t.tournament_participants[0]?.count ?? t.tournament_participants.length)
               : 0;

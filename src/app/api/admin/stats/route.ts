@@ -29,48 +29,95 @@ export async function GET(req: NextRequest) {
       .from("games").select("*", { count: "exact", head: true })
       .gte("created_at", todayISO);
 
+    // Total games (all-time count from games table)
+    const { count: totalGames } = await admin
+      .from("games").select("*", { count: "exact", head: true });
+
     // Active tournaments
     const { count: activeTournaments } = await admin
       .from("tournaments").select("*", { count: "exact", head: true })
       .in("status", ["upcoming", "active"]);
+
+    // Pending tournament approvals
+    const { count: pendingTournamentApprovals } = await admin
+      .from("tournaments").select("*", { count: "exact", head: true })
+      .eq("status", "pending_approval");
 
     // Pending withdrawals
     const { count: pendingWithdrawals } = await admin
       .from("withdrawals").select("*", { count: "exact", head: true })
       .eq("status", "pending");
 
-    // Total deposits (completed)
+    // Total deposits — real money entering the platform (method IN ('mobile_money', 'card'))
     const { data: depositsData } = await admin
       .from("deposits").select("amount_cents")
-      .eq("status", "success");
+      .eq("status", "success")
+      .in("method", ["mobile_money", "card"]);
     const totalDeposits = depositsData?.reduce((sum, d) => sum + (d.amount_cents || 0), 0) || 0;
 
-    // Total withdrawals (completed)
+    // Total withdrawals (completed/approved)
     const { data: withdrawalsData } = await admin
       .from("withdrawals").select("amount_cents")
       .in("status", ["approved", "completed"]);
     const totalWithdrawals = withdrawalsData?.reduce((sum, w) => sum + (w.amount_cents || 0), 0) || 0;
 
-    // Platform revenue (entry fee deductions — tournament fee percentage)
-    // For now, track total tournament prize pools as a proxy
+    // Completed + settled battles stats
+    const { data: completedBattles } = await admin
+      .from("battles")
+      .select("pot_cents, platform_fee_cents")
+      .eq("status", "completed")
+      .eq("settled", true);
+
+    const totalBattleVolume = completedBattles?.reduce((sum, b) => sum + (b.pot_cents || 0), 0) || 0;
+    const battleRevenue = completedBattles?.reduce((sum, b) => sum + (b.platform_fee_cents || 0), 0) || 0;
+
+    // Platform revenue from finished tournaments (10% of entry fees)
+    const { data: finishedTournaments } = await admin
+      .from("tournaments")
+      .select("id, entry_fee_cents")
+      .eq("status", "finished");
+
+    let tournamentEntryFees = 0;
+    if (finishedTournaments && finishedTournaments.length > 0) {
+      const finishedIds = finishedTournaments.map((t) => t.id);
+      const { data: participants } = await admin
+        .from("tournament_participants")
+        .select("tournament_id")
+        .in("tournament_id", finishedIds);
+
+      const feeMap = new Map(finishedTournaments.map((t) => [t.id, t.entry_fee_cents || 0]));
+      for (const p of participants || []) {
+        tournamentEntryFees += feeMap.get(p.tournament_id) || 0;
+      }
+    }
+    const tournamentRevenue = Math.floor(tournamentEntryFees * 0.1);
+    const platformRevenue = battleRevenue + tournamentRevenue;
+
+    // Total prize pools (non-cancelled tournaments)
     const { data: tournamentsData } = await admin
-      .from("tournaments").select("prize_pool_cents, entry_fee_cents, status")
+      .from("tournaments").select("prize_pool_cents")
       .neq("status", "cancelled");
     let totalPrizePools = 0;
-    let totalEntryFees = 0;
     for (const t of tournamentsData || []) {
       totalPrizePools += t.prize_pool_cents || 0;
     }
 
+    // Wallet liquidity — net money in the wallet system
+    const walletLiquidity = totalDeposits - totalWithdrawals;
+
     return NextResponse.json({
-      totalUsers,
-      gamesToday,
-      activeTournaments,
-      pendingWithdrawals,
+      totalUsers: totalUsers ?? 0,
+      gamesToday: gamesToday ?? 0,
+      totalGames: totalGames ?? 0,
+      activeTournaments: activeTournaments ?? 0,
+      pendingTournamentApprovals: pendingTournamentApprovals ?? 0,
+      pendingWithdrawals: pendingWithdrawals ?? 0,
       totalDeposits,
       totalWithdrawals,
+      totalBattleVolume,
+      platformRevenue,
       totalPrizePools,
-      walletLiquidity: totalDeposits - totalWithdrawals - totalPrizePools,
+      walletLiquidity,
     });
   } catch (err: any) {
     return NextResponse.json({ error: "Failed to fetch stats" }, { status: 500 });

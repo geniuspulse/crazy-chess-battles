@@ -150,6 +150,9 @@ export default function CreateTournamentPage() {
         throw new Error(data.error || 'Failed to create tournament');
       }
 
+      if (data.pendingApproval) {
+        alert(data.message || "Tournament created! It's pending admin approval.");
+      }
       router.push(`/tournaments/${data.tournament.id}`);
     } catch (err: any) {
       setError(err.message || 'An error occurred while creating the tournament.');

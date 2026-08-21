@@ -155,6 +155,70 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
+    // ── Approve pending tournament ──
+    if (action === "approve") {
+      const { data: tournament } = await admin
+        .from("tournaments").select("status").eq("id", tournamentId).single();
+      if (!tournament) return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+      if (tournament.status !== "pending_approval") {
+        return NextResponse.json({ error: "Tournament is not pending approval" }, { status: 400 });
+      }
+
+      const { error } = await admin
+        .from("tournaments")
+        .update({ status: "upcoming" })
+        .eq("id", tournamentId);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+      try {
+        await admin.from("admin_logs").insert({
+          admin_id: user.id, action: "tournament_approved",
+          target_type: "tournament", target_id: tournamentId,
+        });
+      } catch {}
+
+      return NextResponse.json({ success: true });
+    }
+
+    // ── Reject pending tournament ──
+    if (action === "reject") {
+      const { data: tournament } = await admin
+        .from("tournaments").select("status, entry_fee_cents").eq("id", tournamentId).single();
+      if (!tournament) return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+      if (tournament.status !== "pending_approval") {
+        return NextResponse.json({ error: "Tournament is not pending approval" }, { status: 400 });
+      }
+
+      const { error } = await admin
+        .from("tournaments")
+        .update({ status: "rejected", ended_at: new Date().toISOString() })
+        .eq("id", tournamentId);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+      // Refund any paid participants
+      const entryFee = tournament.entry_fee_cents || 0;
+      if (entryFee > 0) {
+        const { data: participants } = await admin
+          .from("tournament_participants")
+          .select("player_id, paid_entry_fee")
+          .eq("tournament_id", tournamentId)
+          .eq("paid_entry_fee", true);
+
+        for (const p of participants || []) {
+          await admin.rpc("credit_wallet", { p_user_id: p.player_id, p_amount_cents: entryFee });
+        }
+      }
+
+      try {
+        await admin.from("admin_logs").insert({
+          admin_id: user.id, action: "tournament_rejected",
+          target_type: "tournament", target_id: tournamentId,
+        });
+      } catch {}
+
+      return NextResponse.json({ success: true });
+    }
+
     // ── Cancel with refunds ──
     if (action === "cancel") {
       const now = new Date().toISOString();

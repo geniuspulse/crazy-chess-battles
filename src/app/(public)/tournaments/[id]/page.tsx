@@ -183,7 +183,13 @@ export default async function TournamentDetailPage({
     active: "text-ccb-success bg-ccb-success/10 border-ccb-success/20",
     finished: "text-ccb-muted bg-ccb-surface border-ccb-muted/20",
     cancelled: "text-ccb-danger bg-ccb-danger/10 border-ccb-danger/20",
+    pending_approval: "text-amber-500 bg-amber-500/10 border-amber-500/20",
+    rejected: "text-red-500 bg-red-500/10 border-red-500/20",
   };
+
+  // Show a pending approval banner instead of join button
+  const isPendingApproval = tournament.status === "pending_approval";
+  const isRejected = tournament.status === "rejected";
 
   // Sort participants based on status
   const sortedParticipants = [...participants].sort((a, b) => {
@@ -239,6 +245,18 @@ export default async function TournamentDetailPage({
             )}
           </div>
 
+          {isPendingApproval && (
+            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-500 text-sm text-center">
+              ⏳ This tournament is pending admin approval. It will be visible to all players once approved.
+            </div>
+          )}
+          {isRejected && (
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-500 text-sm text-center">
+              ❌ This tournament was not approved by the admin. Any paid entry fees have been refunded.
+            </div>
+          )}
+          {!isPendingApproval && !isRejected && (
+          <>
           {/* User & Admin/Creator action buttons */}
           <TournamentActions
             tournamentId={tournament.id}
@@ -252,6 +270,8 @@ export default async function TournamentDetailPage({
             isCreator={isCreator}
             canManage={canManage}
           />
+          </>
+          )}
         </div>
 
         {/* Tournament Info Grid */}
