@@ -118,7 +118,7 @@ export default function EarnClient({ berryBalance, userId, hasPlayedGame, profil
   };
 
   const handleShare = async (platform: "whatsapp" | "copy") => {
-    const shareUrl = `https://crazy-chess-battles.vercel.app/signup?ref=${referralCode}`;
+    const shareUrl = `https://crazychessbattles.live/signup?ref=${referralCode}`;
     const shareText = `🏆 I'm playing chess on Crazy Chess Battles! Join me and earn CCB berries → ${shareUrl}`;
 
     if (platform === "whatsapp") {
@@ -131,7 +131,7 @@ export default function EarnClient({ berryBalance, userId, hasPlayedGame, profil
   };
 
   const handleWhatsAppStatus = async () => {
-    const shareUrl = `https://crazy-chess-battles.vercel.app/signup?ref=${referralCode}`;
+    const shareUrl = `https://crazychessbattles.live/signup?ref=${referralCode}`;
     const statusText = `🏆 Playing chess on Crazy Chess Battles! Join & earn CCB berries → ${shareUrl}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(statusText)}`, "_blank");
     await handleClaim("whatsapp_status");
@@ -140,7 +140,7 @@ export default function EarnClient({ berryBalance, userId, hasPlayedGame, profil
   // "Share the App" — trigger the actual share action first, then claim.
   // Uses the native Web Share sheet where available, otherwise falls back to WhatsApp.
   const handleShareApp = async () => {
-    const shareUrl = `https://crazy-chess-battles.vercel.app/signup?ref=${referralCode}`;
+    const shareUrl = `https://crazychessbattles.live/signup?ref=${referralCode}`;
     const shareText = `🏆 I'm playing chess on Crazy Chess Battles! Join me and earn CCB berries → ${shareUrl}`;
 
     try {

@@ -41,7 +41,7 @@ export async function GET() {
 
     return NextResponse.json({
       referralCode,
-      shareUrl: `https://crazy-chess-battles.vercel.app/signup?ref=${referralCode}`,
+      shareUrl: `https://crazychessbattles.live/signup?ref=${referralCode}`,
       rewardAmount: 1000,
       rewardKwacha: 500,
       stats: {
