@@ -88,7 +88,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const myTurn = (isWhite && game.turn === "white") || (isBlack && game.turn === "black");
   const gameEnded = game.status !== "playing";
 
-  const isLiveView = viewPly === 0 || viewPly >= moveHistory.length;
+  const isLiveView = moveHistory.length === 0 || viewPly >= moveHistory.length;
 
   useEffect(() => {
     if (gameEnded) return;
@@ -520,8 +520,8 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
             },
             allowDragging: !gameEnded && !isSpectator && isLiveView,
             squareStyles: squareStyles,
-            showAnimations: true,
-            animationDurationInMs: 150,
+            showAnimations: false,
+            animationDurationInMs: 0,
             showNotation: true,
             darkSquareNotationStyle: { color: boardTheme.light, fontSize: "10px", fontWeight: 600 },
             lightSquareNotationStyle: { color: boardTheme.dark, fontSize: "10px", fontWeight: 600 },
