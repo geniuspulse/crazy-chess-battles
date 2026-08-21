@@ -42,6 +42,9 @@ export default function BattlesPage() {
   const [view, setView] = useState<View>("main");
   const [config, setConfig] = useState<BattleConfig | null>(null);
   const [balance, setBalance] = useState(0);
+  const [gamesPlayed, setGamesPlayed] = useState(0);
+  const MIN_GAMES_FOR_BATTLES = 5;
+  const battlesLocked = gamesPlayed < MIN_GAMES_FOR_BATTLES;
   const [selectedStake, setSelectedStake] = useState<number | null>(null);
   const [selectedTC, setSelectedTC] = useState("blitz");
   const [state, setState] = useState<BattleState>("select");
@@ -89,12 +92,13 @@ export default function BattlesPage() {
     if (!user) return;
     const { data: profile } = await supabase
       .from("profiles")
-      .select("rating, wallet_balance_cents")
+      .select("rating, wallet_balance_cents, games_played")
       .eq("id", user.id)
       .single();
     if (profile) {
       setMyRating(profile.rating ?? 1200);
       setBalance(profile.wallet_balance_cents ?? 0);
+      setGamesPlayed(profile.games_played ?? 0);
     }
   };
 
@@ -270,6 +274,45 @@ export default function BattlesPage() {
         <AlertCircle className="w-12 h-12 text-ccb-muted mb-4" />
         <p className="text-lg font-semibold">Chess Battles are currently disabled</p>
         <p className="text-sm text-ccb-muted mt-2">Check back later or contact an admin.</p>
+      </div>
+    );
+  }
+
+  // ===== Battles locked — insufficient games played =====
+  if (battlesLocked) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-6 pb-28 sm:py-10 sm:pb-10">
+        <div className="text-center py-8">
+          <div className="w-16 h-16 rounded-full bg-ccb-primary/10 flex items-center justify-center mx-auto mb-4">
+            <Target className="w-8 h-8 text-ccb-primary" />
+          </div>
+          <h2 className="text-xl font-bold mb-2">Battles Locked</h2>
+          <p className="text-sm text-ccb-muted max-w-sm mx-auto mb-6">
+            You need to play at least <span className="font-semibold text-ccb-text">{MIN_GAMES_FOR_BATTLES} games</span> to unlock Chess Battles.
+            You&apos;ve played <span className="font-semibold text-ccb-text">{gamesPlayed}</span> so far.
+          </p>
+
+          <div className="max-w-sm mx-auto mb-6">
+            <div className="flex items-center justify-between text-xs text-ccb-muted mb-1.5">
+              <span>{gamesPlayed} / {MIN_GAMES_FOR_BATTLES} games</span>
+              <span>{Math.round((gamesPlayed / MIN_GAMES_FOR_BATTLES) * 100)}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-ccb-surface overflow-hidden">
+              <div
+                className="h-full rounded-full bg-ccb-primary transition-all duration-500"
+                style={{ width: `${Math.min(100, (gamesPlayed / MIN_GAMES_FOR_BATTLES) * 100)}%` }}
+              />
+            </div>
+          </div>
+
+          <a href="/play" className="btn-primary inline-block px-8 py-3.5">
+            <Zap className="w-4 h-4 mr-1.5" /> Play a Quick Match
+          </a>
+
+          <p className="text-xs text-ccb-muted mt-4 max-w-sm mx-auto">
+            Got a Battle Challenge link from a friend? You can still accept it directly — just open the link they sent you!
+          </p>
+        </div>
       </div>
     );
   }

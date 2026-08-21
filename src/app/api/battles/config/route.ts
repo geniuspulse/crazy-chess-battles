@@ -41,6 +41,7 @@ export async function PUT(req: NextRequest) {
       "enabled", "stake_levels", "platform_fee_pct", "rating_range",
       "queue_timeout_s", "initial_minutes", "increment_seconds",
       "armageddon_pct", "max_armageddon_rounds", "disconnect_timeout_s",
+      "min_games_for_battles",
     ];
 
     for (const key of allowed) {

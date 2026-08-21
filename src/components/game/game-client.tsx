@@ -610,12 +610,6 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         ) : (
           <div className="flex items-center justify-around h-14">
             <button
-              onClick={() => toggleSheet("chat")}
-              className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "chat" ? "text-ccb-primary" : "text-ccb-muted"}`}
-            >
-              <MessageCircle className="w-5 h-5" /><span className="text-[10px]">Chat</span>
-            </button>
-            <button
               onClick={offerDraw}
               disabled={isSpectator}
               className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-muted disabled:opacity-40"
@@ -628,6 +622,26 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
               className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-danger disabled:opacity-40"
             >
               <Flag className="w-5 h-5" /><span className="text-[10px]">Resign</span>
+            </button>
+            <button
+              onClick={() => setViewPly(Math.max(0, viewPly - 1))}
+              disabled={viewPly <= 0}
+              className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-muted hover:text-ccb-primary disabled:opacity-30"
+            >
+              <ChevronLeft className="w-5 h-5" /><span className="text-[10px]">Back</span>
+            </button>
+            <button
+              onClick={() => setViewPly(Math.min(moveHistory.length, viewPly + 1))}
+              disabled={viewPly >= moveHistory.length}
+              className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-muted hover:text-ccb-primary disabled:opacity-30"
+            >
+              <ChevronRight className="w-5 h-5" /><span className="text-[10px]">Forward</span>
+            </button>
+            <button
+              onClick={() => toggleSheet("chat")}
+              className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "chat" ? "text-ccb-primary" : "text-ccb-muted"}`}
+            >
+              <MessageCircle className="w-5 h-5" /><span className="text-[10px]">Chat</span>
             </button>
           </div>
         )}

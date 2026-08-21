@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Trophy, Handshake, Frown, RefreshCw, Home, Swords, Cherry } from "lucide-react";
+import { Trophy, Handshake, Frown, RefreshCw, Home, Swords, Cherry, ScanSearch } from "lucide-react";
 import FireworksCanvas from "./fireworks-canvas";
 
 export type GameOutcome = "win" | "loss" | "draw";
@@ -16,6 +16,7 @@ interface VictoryOverlayProps {
   subtitle: string;
   berriesAwarded?: number;
   onNewGame?: () => void;
+  onReview?: () => void;
   newGameLabel?: string;
   lobbyHref?: string;
 }
@@ -29,6 +30,7 @@ export default function VictoryOverlay({
   subtitle,
   berriesAwarded,
   onNewGame,
+  onReview,
   newGameLabel = "New Game",
   lobbyHref = "/play",
 }: VictoryOverlayProps) {
@@ -166,6 +168,19 @@ export default function VictoryOverlay({
               }}
             >
               <RefreshCw className="w-4 h-4" /> {newGameLabel}
+            </button>
+          )}
+          {onReview && (
+            <button
+              onClick={onReview}
+              className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+              style={{
+                backgroundColor: "rgba(255,255,255,0.06)",
+                color: "rgba(255,255,255,0.7)",
+                border: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              <ScanSearch className="w-4 h-4" /> Review Moves
             </button>
           )}
           <Link

@@ -44,11 +44,25 @@ export async function POST(req: NextRequest) {
 
     const { data: profile } = await admin
       .from("profiles")
-      .select("wallet_balance_cents")
+      .select("wallet_balance_cents, games_played")
       .eq("id", user.id)
       .single();
 
     if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+
+    const minGames = (config as any).min_games_for_battles ?? 5;
+    const gamesPlayed = profile.games_played ?? 0;
+    if (gamesPlayed < minGames) {
+      return NextResponse.json(
+        {
+          error: `You need to play at least ${minGames} games before creating Battle Challenges. You have played ${gamesPlayed} so far. Play some Quick Matches to unlock Battles!`,
+          needsMoreGames: true,
+          gamesPlayed,
+          minRequired: minGames,
+        },
+        { status: 403 }
+      );
+    }
 
     const balance = profile.wallet_balance_cents ?? 0;
     if (balance < stakeCents) {

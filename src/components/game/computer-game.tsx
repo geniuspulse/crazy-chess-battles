@@ -73,6 +73,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   const [premove, setPremove] = useState<{ from: string; to: string } | null>(null);
   const [activeSheet, setActiveSheet] = useState<SheetType>(null);
   const [viewPly, setViewPly] = useState(0);
+  const [overlayDismissed, setOverlayDismissed] = useState(false);
   const [reviewFen, setReviewFen] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const soundPlayedForEnd = useRef(false);
@@ -355,6 +356,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     setMoveCount(0);
     setMoveHistory([]);
     setViewPly(0);
+    setOverlayDismissed(false);
     setLastMove(null);
     setSelectedSquare(null);
     setLegalMoveSquares([]);
@@ -710,12 +712,13 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
       />
 
       <VictoryOverlay
-        visible={gameEnded}
+        visible={gameEnded && !overlayDismissed}
         outcome={(winner === null ? "draw" : winner === playerColor ? "win" : "loss") as GameOutcome}
         reasonLabel={STATUS_LABELS[status] || status}
         moveCount={moveCount}
         subtitle={`${DIFFICULTY_LABELS[difficulty]} · vs Computer`}
         onNewGame={handleNewGame}
+        onReview={() => setOverlayDismissed(true)}
       />
     </>
   );

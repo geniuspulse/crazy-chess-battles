@@ -14,6 +14,7 @@ export interface BattleConfig {
   armageddon_pct: number;
   max_armageddon_rounds: number;
   disconnect_timeout_s: number;
+  min_games_for_battles: number;
 }
 
 export const DEFAULT_CONFIG: BattleConfig = {
@@ -27,6 +28,7 @@ export const DEFAULT_CONFIG: BattleConfig = {
   armageddon_pct: 50,
   max_armageddon_rounds: 3,
   disconnect_timeout_s: 30,
+  min_games_for_battles: 5,
 };
 
 export function formatMKK(cents: number): string {
