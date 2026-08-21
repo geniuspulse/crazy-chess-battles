@@ -42,7 +42,7 @@ export async function updateSession(request: NextRequest) {
   const user = session?.user ?? null;
 
   // Redirect to login if not authenticated and trying to access protected routes
-  const protectedRoutes = ["/dashboard", "/play", "/wallet", "/history", "/admin"];
+  const protectedRoutes = ["/dashboard", "/play", "/wallet", "/history", "/admin", "/challenge", "/battle-challenge", "/game"];
   const isProtected = protectedRoutes.some((route) =>
     request.nextUrl.pathname.startsWith(route)
   );
@@ -63,6 +63,13 @@ export async function updateSession(request: NextRequest) {
     url.pathname = redirect || "/dashboard";
     url.searchParams.delete("redirect");
     return NextResponse.redirect(url);
+  }
+
+  // Set no-cache headers for challenge and game pages to prevent edge caching
+  if (request.nextUrl.pathname.startsWith("/challenge") || request.nextUrl.pathname.startsWith("/battle-challenge") || request.nextUrl.pathname.startsWith("/game")) {
+    supabaseResponse.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    supabaseResponse.headers.set("CDN-Cache-Control", "no-store");
+    supabaseResponse.headers.set("Vercel-CDN-Cache-Control", "no-store");
   }
 
   return supabaseResponse;
