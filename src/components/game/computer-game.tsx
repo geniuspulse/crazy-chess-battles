@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
-import { Clock, Flag, ArrowLeft, Bot, Volume2, VolumeX, List, Palette, X } from "lucide-react";
+import { Clock, Flag, ArrowLeft, Bot, Volume2, VolumeX, List, Palette, X, ChevronLeft, ChevronRight, MoreVertical } from "lucide-react";
 import Link from "next/link";
 import { getBestMove, type AIDifficulty } from "@/lib/game/chess-ai";
 import { getCapturedPieces, getCheckSquare, buildSquareStyles } from "@/lib/game/board-helpers";
@@ -11,7 +11,7 @@ import { playSound, detectMoveSound, setSoundEnabled, isSoundEnabled } from "@/l
 import { getStoredBoardTheme, type BoardTheme } from "@/lib/game/board-themes";
 import { useBoardSize } from "@/hooks/use-board-size";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
-import MoveHistory from "./move-history";
+import MoveScroller from "./move-scroller";
 import CapturedPieces from "./captured-pieces";
 import VictoryOverlay, { type GameOutcome } from "./victory-overlay";
 import PromotionDialog from "./promotion-dialog";
@@ -40,7 +40,7 @@ const STATUS_LABELS: Record<string, string> = {
   timeout: "Time out",
 };
 
-type SheetType = "moves" | "theme" | null;
+type SheetType = "moves" | "theme" | "menu" | null;
 
 function formatClock(ms: number | null): string {
   if (ms === null || ms === undefined) return "—";
@@ -72,6 +72,8 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   const [legalMoveSquares, setLegalMoveSquares] = useState<string[]>([]);
   const [premove, setPremove] = useState<{ from: string; to: string } | null>(null);
   const [activeSheet, setActiveSheet] = useState<SheetType>(null);
+  const [viewPly, setViewPly] = useState(0);
+  const [reviewFen, setReviewFen] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const soundPlayedForEnd = useRef(false);
   const { containerRef: boardContainerRef, size: boardSize } = useBoardSize(600, 220);
@@ -216,6 +218,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
       setTurn(chessRef.current.turn() === "w" ? "white" : "black");
       setMoveCount(chessRef.current.history().length);
       setMoveHistory(chessRef.current.history());
+      setViewPly(chessRef.current.history().length);
       setLastMove({ from, to });
       setLastMoveAt(now);
 
@@ -351,6 +354,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     setWinner(null);
     setMoveCount(0);
     setMoveHistory([]);
+    setViewPly(0);
     setLastMove(null);
     setSelectedSquare(null);
     setLegalMoveSquares([]);
@@ -398,6 +402,30 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
 
   const toggleSheet = (sheet: SheetType) => setActiveSheet((prev) => (prev === sheet ? null : sheet));
 
+  // Show past position when reviewing moves
+  const displayFen = reviewFen ?? fen;
+  const isLiveView = viewPly === 0 || viewPly >= moveHistory.length;
+
+  useEffect(() => {
+    if (viewPly === 0 || moveHistory.length === 0) {
+      setReviewFen(null);
+      return;
+    }
+    if (viewPly >= moveHistory.length) {
+      setReviewFen(null);
+      return;
+    }
+    try {
+      const tempGame = new Chess();
+      for (let i = 0; i < viewPly; i++) {
+        tempGame.move(moveHistory[i]);
+      }
+      setReviewFen(tempGame.fen());
+    } catch {
+      setReviewFen(null);
+    }
+  }, [viewPly, moveHistory]);
+
   const opponentData = isPlayerWhite
     ? { name: DIFFICULTY_LABELS[difficulty], color: "black", symbol: "♚", captured: captured.black, advantage: -captured.advantage, clock: getLiveClock("black"), isActive: turn === "black" && !gameEnded }
     : { name: DIFFICULTY_LABELS[difficulty], color: "white", symbol: "♔", captured: captured.white, advantage: captured.advantage, clock: getLiveClock("white"), isActive: turn === "white" && !gameEnded };
@@ -425,21 +453,35 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
             </button>
           </div>
 
+          {/* Horizontal move scroller — chess.com style, at the very top */}
+          <div className="max-w-[600px] mx-auto w-full px-2 py-1">
+            {moveHistory.length >= 2 && (
+              <div className="mb-1">
+                <OpeningBadge moves={moveHistory} />
+              </div>
+            )}
+            <div className="rounded-lg bg-ccb-surface/50 border border-ccb-border/50 px-2 py-1.5">
+              <MoveScroller moves={moveHistory} currentPly={viewPly} onPlyChange={setViewPly} />
+            </div>
+          </div>
+
           {/* Opponent bar */}
-          <div className="shrink-0 flex items-center justify-between max-w-[600px] mx-auto w-full px-2 py-1.5">
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
+          <div className={`shrink-0 flex items-center justify-between max-w-[600px] mx-auto w-full px-2 py-1.5 rounded-lg transition-colors ${opponentData.isActive ? "bg-ccb-primary/8" : ""}`}>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border-2 transition-colors ${opponentData.isActive ? "border-ccb-primary bg-ccb-primary/15" : "border-ccb-border bg-ccb-surface"}`}>
                 <Bot className="w-4 h-4 text-ccb-muted" />
               </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium leading-tight">{opponentData.name}</span>
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm font-semibold leading-tight truncate">{opponentData.name}</span>
                 <CapturedPieces pieces={opponentData.captured} advantage={opponentData.advantage} perspective="top" />
               </div>
             </div>
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-lg font-bold transition-colors ${
-              opponentData.isActive ? "bg-ccb-primary/15 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
+            <div className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-mono text-xl font-bold transition-all shrink-0 ${
+              opponentData.isActive
+                ? "bg-ccb-surface text-ccb-text shadow-md ring-1 ring-ccb-primary/30"
+                : "bg-ccb-surface/60 text-ccb-muted"
             }`}>
-              <Clock className="w-4 h-4" />
+              <Clock className={`w-4 h-4 ${opponentData.isActive ? "text-ccb-primary" : "text-ccb-muted"}`} />
               {opponentData.clock}
             </div>
           </div>
@@ -448,13 +490,13 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
           <div ref={boardContainerRef} className="flex-1 min-h-0 flex items-center justify-center px-2 py-1">
             <div style={{ width: boardSize, height: boardSize }}>
               <Chessboard options={{
-                position: fen,
+                position: displayFen,
                 boardOrientation: isPlayerWhite ? "white" : "black",
                 onPieceDrop: ({ sourceSquare, targetSquare }) => {
                   if (!targetSquare) return false;
                   return onDrop(sourceSquare, targetSquare);
                 },
-                allowDragging: !gameEnded,
+                allowDragging: !gameEnded && isLiveView,
                 squareStyles: squareStyles,
                 showAnimations: true,
                 animationDurationInMs: 300,
@@ -471,23 +513,37 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
           </div>
 
           {/* Player bar */}
-          <div className="shrink-0 flex items-center justify-between max-w-[600px] mx-auto w-full px-2 py-1.5">
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-lg bg-ccb-surface border border-ccb-border flex items-center justify-center shrink-0">
-                <span className="text-base">{playerData.symbol}</span>
+          <div className={`shrink-0 flex items-center justify-between max-w-[600px] mx-auto w-full px-2 py-1.5 rounded-lg transition-colors ${playerData.isActive ? "bg-ccb-primary/8" : ""}`}>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border-2 transition-colors ${playerData.isActive ? "border-ccb-primary bg-ccb-primary/15" : "border-ccb-border bg-ccb-surface"}`}>
+                <span className="text-lg">{playerData.symbol}</span>
               </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium leading-tight">{playerData.name}</span>
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm font-semibold leading-tight truncate">{playerData.name}</span>
                 <CapturedPieces pieces={playerData.captured} advantage={playerData.advantage} perspective="bottom" />
               </div>
             </div>
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-lg font-bold transition-colors ${
-              playerData.isActive ? "bg-ccb-primary/15 text-ccb-primary" : "bg-ccb-surface text-ccb-muted"
+            <div className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-mono text-xl font-bold transition-all shrink-0 ${
+              playerData.isActive
+                ? "bg-ccb-surface text-ccb-text shadow-md ring-1 ring-ccb-primary/30"
+                : "bg-ccb-surface/60 text-ccb-muted"
             }`}>
-              <Clock className="w-4 h-4" />
+              <Clock className={`w-4 h-4 ${playerData.isActive ? "text-ccb-primary" : "text-ccb-muted"}`} />
               {playerData.clock}
             </div>
           </div>
+
+          {/* Live position indicator when reviewing past moves */}
+          {!isLiveView && moveHistory.length > 0 && (
+            <div className="max-w-[600px] mx-auto w-full px-2">
+              <button
+                onClick={() => setViewPly(moveHistory.length)}
+                className="w-full text-center text-xs text-ccb-primary hover:underline py-1"
+              >
+                ← Return to live position
+              </button>
+            </div>
+          )}
 
           {/* Desktop-only resign control */}
           {!gameEnded && (
@@ -510,7 +566,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
             </div>
           )}
 
-          {/* Mobile-only bottom toolbar */}
+          {/* Mobile bottom toolbar — chess.com style */}
           <div className="lg:hidden shrink-0 border-t border-ccb-border" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
             {showResignConfirm ? (
               <div className="flex items-center justify-center gap-3 h-14">
@@ -522,6 +578,29 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
                   Cancel
                 </button>
               </div>
+            ) : gameEnded ? (
+              <div className="flex items-center justify-around h-14">
+                <button onClick={() => toggleSheet("menu")} className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-muted hover:text-ccb-primary">
+                  <MoreVertical className="w-5 h-5" /><span className="text-[10px]">Options</span>
+                </button>
+                <button onClick={() => toggleSheet("theme")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "theme" ? "text-ccb-primary" : "text-ccb-muted"}`}>
+                  <Palette className="w-5 h-5" /><span className="text-[10px]">Board</span>
+                </button>
+                <button
+                  onClick={() => setViewPly(Math.max(0, viewPly - 1))}
+                  disabled={viewPly <= 0}
+                  className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-muted hover:text-ccb-primary disabled:opacity-30"
+                >
+                  <ChevronLeft className="w-5 h-5" /><span className="text-[10px]">Back</span>
+                </button>
+                <button
+                  onClick={() => setViewPly(Math.min(moveHistory.length, viewPly + 1))}
+                  disabled={viewPly >= moveHistory.length}
+                  className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-muted hover:text-ccb-primary disabled:opacity-30"
+                >
+                  <ChevronRight className="w-5 h-5" /><span className="text-[10px]">Forward</span>
+                </button>
+              </div>
             ) : (
               <div className="flex items-center justify-around h-14">
                 <button onClick={() => toggleSheet("moves")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "moves" ? "text-ccb-primary" : "text-ccb-muted"}`}>
@@ -531,15 +610,30 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
                   <Palette className="w-5 h-5" /><span className="text-[10px]">Board</span>
                 </button>
                 <button
-                  onClick={() => !gameEnded && setShowResignConfirm(true)}
-                  disabled={gameEnded}
-                  className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-danger disabled:opacity-40"
+                  onClick={() => setShowResignConfirm(true)}
+                  className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-danger"
                 >
                   <Flag className="w-5 h-5" /><span className="text-[10px]">Resign</span>
                 </button>
               </div>
             )}
           </div>
+
+          {/* Mobile menu dropdown */}
+          {activeSheet === "menu" && (
+            <div className="lg:hidden fixed inset-0 z-30" onClick={() => setActiveSheet(null)}>
+              <div className="absolute top-12 right-3 card p-2 min-w-[180px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <button onClick={() => { setActiveSheet("theme"); }} className="w-full flex items-center justify-between px-3 py-2 rounded-md hover:bg-ccb-surface transition-colors text-sm">
+                  <span>Board Theme</span>
+                  <Palette className="w-4 h-4 text-ccb-muted" />
+                </button>
+                <button onClick={toggleSound} className="w-full flex items-center justify-between px-3 py-2 rounded-md hover:bg-ccb-surface transition-colors text-sm">
+                  <span>Sound</span>
+                  {soundOn ? <Volume2 className="w-4 h-4 text-ccb-primary" /> : <VolumeX className="w-4 h-4 text-ccb-muted" />}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Mobile bottom sheet — Moves / Theme */}
           {activeSheet && (
@@ -556,7 +650,11 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
                 {activeSheet === "moves" && (
                   moveHistory.length >= 2 && <div className="mb-2"><OpeningBadge moves={moveHistory} /></div>
                 )}
-                {activeSheet === "moves" && <MoveHistory moves={moveHistory} />}
+                {activeSheet === "moves" && (
+                  <div className="rounded-lg bg-ccb-surface/50 border border-ccb-border/50 px-2 py-1.5">
+                    <MoveScroller moves={moveHistory} currentPly={viewPly} onPlyChange={setViewPly} />
+                  </div>
+                )}
                 {activeSheet === "theme" && <BoardThemePicker inline onThemeChange={setBoardTheme} />}
               </div>
             </div>
@@ -590,7 +688,9 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
 
             {/* Move history */}
             <div className="flex-1 min-h-0">
-              <MoveHistory moves={moveHistory} />
+              <div className="rounded-lg bg-ccb-surface/50 border border-ccb-border/50 px-2 py-1.5">
+                <MoveScroller moves={moveHistory} currentPly={viewPly} onPlyChange={setViewPly} />
+              </div>
             </div>
 
             {/* Footer info */}
