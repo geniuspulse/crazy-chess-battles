@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import { notFound, redirect } from "next/navigation";
-import GameClient from "@/components/game/game-client";
+import { notFound } from "next/navigation";
+import GameClientWrapper from "@/components/game/game-client-wrapper";
 import type { GameState } from "@/hooks/use-realtime-game";
 
 export const dynamic = "force-dynamic";
@@ -57,7 +57,7 @@ export default async function GamePage({
 
   return (
     <>
-      <GameClient
+      <GameClientWrapper
         gameId={id}
         initialGame={gameState}
         currentUserId={user?.id || ""}

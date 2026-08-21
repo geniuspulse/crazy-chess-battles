@@ -54,11 +54,23 @@ export default async function TournamentsPage() {
     .order("starts_at", { ascending: false })
     .limit(20);
 
-  // Filter out pending_approval and rejected tournaments unless admin or creator
+  const now = new Date();
+
+  // Filter logic:
+  // - pending_approval/rejected: only visible to admin or creator
+  // - overdue + still "upcoming" (never auto-started): HIDE from everyone (stale)
+  // - everything else: visible
   const visibleTournaments = (tournaments || []).filter(t => {
+    // Hide pending approval / rejected from non-admins/non-creators
     if (t.status === "pending_approval" || t.status === "rejected") {
       return isAdmin || (user && t.created_by === user.id);
     }
+
+    // Hide overdue tournaments that never started (stale "upcoming" status)
+    if (t.status === "upcoming" && new Date(t.starts_at) < now) {
+      return false;
+    }
+
     return true;
   });
 
@@ -116,6 +128,7 @@ export default async function TournamentsPage() {
             const isUserCreated = t.creator_profit_percent > 0;
             const creator = isUserCreated && t.created_by ? creatorMap[t.created_by] : null;
             const isPaid = t.entry_fee_cents > 0;
+            const isLive = t.status === "active";
 
             return (
               <Link
@@ -134,13 +147,20 @@ export default async function TournamentsPage() {
                           {t.name}
                         </h3>
                         <div className="flex items-center gap-2">
-                          <span
-                            className={`badge border ${
-                              statusColors[t.status] || "text-ccb-muted bg-ccb-surface"
-                            } capitalize text-[11px]`}
-                          >
-                            {t.status}
-                          </span>
+                          {isLive ? (
+                            <span className="badge border text-ccb-success bg-ccb-success/10 border-ccb-success/20 text-[11px] flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-ccb-success animate-pulse" />
+                              Live
+                            </span>
+                          ) : (
+                            <span
+                              className={`badge border ${
+                                statusColors[t.status] || "text-ccb-muted bg-ccb-surface"
+                              } capitalize text-[11px]`}
+                            >
+                              {t.status}
+                            </span>
+                          )}
                           <span className={`badge text-[11px] ${isPaid ? "bg-ccb-success/10 text-ccb-success" : "bg-ccb-primary/10 text-ccb-primary"}`}>
                             {isPaid ? "Paid" : "Free"}
                           </span>

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import ComputerGame from "@/components/game/computer-game";
+import ComputerGameWrapper from "@/components/game/computer-game-wrapper";
 import type { AIDifficulty } from "@/lib/game/chess-ai";
 import { createClient } from "@/lib/supabase/server";
 
@@ -35,7 +35,7 @@ export default async function ComputerGamePage({
   const { data: { user } } = await supabase.auth.getUser();
 
   return (
-    <ComputerGame
+    <ComputerGameWrapper
       difficulty={difficulty}
       playerColor={color}
       initialMinutes={tcConfig.minutes}

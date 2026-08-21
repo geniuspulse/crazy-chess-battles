@@ -3,11 +3,11 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess } from "chess.js";
-import { Clock, Flag, ArrowLeft, Bot, Volume2, VolumeX, List, Palette, X, ChevronLeft, ChevronRight, MoreVertical } from "lucide-react";
+import { Clock, Flag, ArrowLeft, Bot, Volume2, VolumeX, List, Palette, X, ChevronLeft, ChevronRight, MoreVertical, MessageCircle, RotateCcw, Send } from "lucide-react";
 import Link from "next/link";
 import { getBestMove, type AIDifficulty } from "@/lib/game/chess-ai";
-import { getCapturedPieces, getCheckSquare, buildSquareStyles } from "@/lib/game/board-helpers";
-import { playSound, detectMoveSound, setSoundEnabled, isSoundEnabled } from "@/lib/game/sound";
+import { getCapturedPieces, getCheckSquare } from "@/lib/game/board-helpers";
+import { playSound, detectMoveSound, setSoundEnabled } from "@/lib/game/sound";
 import { getStoredBoardTheme, type BoardTheme } from "@/lib/game/board-themes";
 import { useBoardSize } from "@/hooks/use-board-size";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
@@ -40,7 +40,13 @@ const STATUS_LABELS: Record<string, string> = {
   timeout: "Time out",
 };
 
-type SheetType = "moves" | "theme" | "menu" | null;
+type SheetType = "chat" | "theme" | "menu" | "moves" | null;
+
+interface ChatMsg {
+  id: string;
+  sender: "user" | "bot";
+  text: string;
+}
 
 function formatClock(ms: number | null): string {
   if (ms === null || ms === undefined) return "—";
@@ -75,8 +81,13 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   const [viewPly, setViewPly] = useState(0);
   const [overlayDismissed, setOverlayDismissed] = useState(false);
   const [reviewFen, setReviewFen] = useState<string | null>(null);
+  const [botMessages, setBotMessages] = useState<ChatMsg[]>([
+    { id: "init", sender: "bot", text: `Hello! Good luck playing against ${DIFFICULTY_LABELS[difficulty]}! 🤖` }
+  ]);
+  const [chatInput, setChatInput] = useState("");
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const soundPlayedForEnd = useRef(false);
+  const savedRef = useRef(false);
   const { containerRef: boardContainerRef, size: boardSize } = useBoardSize(600, 220);
 
   useLockBodyScroll();
@@ -85,8 +96,9 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   const isPlayerTurn = (isPlayerWhite && turn === "white") || (!isPlayerWhite && turn === "black");
   const gameEnded = status !== "playing";
   const aiColor = isPlayerWhite ? "black" : "white";
+  const isLiveView = viewPly === 0 || viewPly >= moveHistory.length;
 
-  // Derived: captured pieces, check square, board highlights
+  // Derived: captured pieces, check square
   const captured = useMemo(() => getCapturedPieces(fen), [fen]);
   const checkSquare = useMemo(() => getCheckSquare(fen), [fen]);
 
@@ -96,7 +108,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
       styles[lastMove.from] = { background: "radial-gradient(circle, rgba(139,92,246,0.35) 70%, transparent 72%)" };
       styles[lastMove.to] = { background: "radial-gradient(circle, rgba(139,92,246,0.35) 70%, transparent 72%)" };
     }
-    if (checkSquare) {
+    if (checkSquare && isLiveView) {
       styles[checkSquare] = {
         background: "radial-gradient(circle, rgba(239,68,68,0.6) 60%, transparent 62%)",
         boxShadow: "inset 0 0 12px rgba(239,68,68,0.5)",
@@ -129,7 +141,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
       };
     }
     return styles;
-  }, [lastMove, checkSquare, legalMoveSquares, selectedSquare, premove]);
+  }, [lastMove, checkSquare, legalMoveSquares, selectedSquare, premove, isLiveView]);
 
   // Live clock tick
   useEffect(() => {
@@ -161,7 +173,6 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
   }, [gameEnded]);
 
   // Save bot game to database when game ends
-  const savedRef = useRef(false);
   useEffect(() => {
     if (!gameEnded || savedRef.current || !userId) return;
     savedRef.current = true;
@@ -195,6 +206,10 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     try {
       const result = chessRef.current.move({ from, to, promotion });
       if (result === null) return false;
+
+      // Clear selections
+      setSelectedSquare(null);
+      setLegalMoveSquares([]);
 
       // Play sound based on move type
       const soundType = detectMoveSound(result);
@@ -279,9 +294,25 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     }
   }, [isPlayerTurn, premove, fen, gameEnded, applyMove, isPromotionMove]);
 
-  // Handle piece click — show legal moves
+  // Handle piece click — show legal moves or capture (Tap-to-move)
   const handlePieceClick = useCallback(({ square, piece }: { square: string | null; piece: { pieceType: string } | null }) => {
-    if (!isPlayerTurn || gameEnded || !piece || !square) return;
+    if (gameEnded || !isLiveView) return;
+    if (!piece || !square) return;
+
+    // If we already have a piece selected and target square is a legal capture
+    if (selectedSquare && square !== selectedSquare && legalMoveSquares.includes(square)) {
+      if (isPromotionMove(selectedSquare, square)) {
+        setPendingPromotion({ from: selectedSquare, to: square });
+      } else {
+        applyMove(selectedSquare, square, "q");
+      }
+      setSelectedSquare(null);
+      setLegalMoveSquares([]);
+      return;
+    }
+
+    // Select the piece if it belongs to the player and it's their turn
+    if (!isPlayerTurn) return;
     const game = new Chess(fen);
     const squarePiece = game.get(square as any);
     if (!squarePiece) return;
@@ -291,30 +322,41 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
       setLegalMoveSquares([]);
       return;
     }
+    // Toggle: if clicking the same piece, deselect; otherwise select
+    if (selectedSquare === square) {
+      setSelectedSquare(null);
+      setLegalMoveSquares([]);
+      return;
+    }
     setSelectedSquare(square);
     const moves = game.moves({ square: square as any, verbose: true });
     setLegalMoveSquares(moves.map((m: any) => m.to));
-  }, [isPlayerTurn, gameEnded, fen, isPlayerWhite]);
+  }, [isPlayerTurn, gameEnded, fen, isPlayerWhite, isLiveView, selectedSquare, legalMoveSquares, isPromotionMove, applyMove]);
 
-  // Handle square click — if a legal move target, make the move
+  // Handle square click — tap to move or delegate to piece click
   const handleSquareClick = useCallback(({ square, piece }: { square: string; piece: { pieceType: string } | null }) => {
-    if (selectedSquare && legalMoveSquares.includes(square)) {
-      if (isPromotionMove(selectedSquare, square)) {
-        setPendingPromotion({ from: selectedSquare, to: square });
-      } else {
-        applyMove(selectedSquare, square, "q");
+    if (gameEnded || !isLiveView) return;
+    if (selectedSquare && square !== selectedSquare) {
+      if (legalMoveSquares.includes(square)) {
+        if (isPromotionMove(selectedSquare, square)) {
+          setPendingPromotion({ from: selectedSquare, to: square });
+        } else {
+          applyMove(selectedSquare, square, "q");
+        }
       }
       setSelectedSquare(null);
       setLegalMoveSquares([]);
-    } else if (!piece) {
-      setSelectedSquare(null);
-      setLegalMoveSquares([]);
+    } else {
+      handlePieceClick({ square, piece });
     }
-  }, [selectedSquare, legalMoveSquares, isPromotionMove, applyMove]);
+  }, [selectedSquare, legalMoveSquares, isPromotionMove, applyMove, handlePieceClick, gameEnded, isLiveView]);
 
-  // Player drop handler — intercept promotions
+  // Player drop handler — drag and drop
   const onDrop = useCallback((sourceSquare: string, targetSquare: string): boolean => {
-    if (gameEnded) return false;
+    if (gameEnded || !isLiveView) return false;
+    setSelectedSquare(null);
+    setLegalMoveSquares([]);
+
     if (isPlayerTurn) {
       if (isPromotionMove(sourceSquare, targetSquare)) {
         setPendingPromotion({ from: sourceSquare, to: targetSquare });
@@ -331,7 +373,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     if (!isMyPiece) return false;
     setPremove({ from: sourceSquare, to: targetSquare });
     return true;
-  }, [isPlayerTurn, gameEnded, isPromotionMove, applyMove, fen, isPlayerWhite]);
+  }, [isPlayerTurn, gameEnded, isPromotionMove, applyMove, fen, isPlayerWhite, isLiveView]);
 
   // Handle promotion selection
   const handlePromotionSelect = useCallback((piece: "q" | "r" | "b" | "n") => {
@@ -364,6 +406,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
     setWhiteClock(initialMinutes * 60 * 1000);
     setBlackClock(initialMinutes * 60 * 1000);
     setLastMoveAt(Date.now());
+    savedRef.current = false;
     soundPlayedForEnd.current = false;
     playSound("gameStart");
   };
@@ -379,7 +422,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
       return formatClock(player === "white" ? whiteClock : blackClock);
     }
     const elapsed = Date.now() - lastMoveAt;
-    void clockTick; // force re-render every second
+    void clockTick;
     const base = player === "white" ? whiteClock : blackClock;
     return formatClock(Math.max(0, base - elapsed));
   };
@@ -404,9 +447,35 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
 
   const toggleSheet = (sheet: SheetType) => setActiveSheet((prev) => (prev === sheet ? null : sheet));
 
+  const sendChatMessage = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const userMsg: ChatMsg = { id: String(Date.now()), sender: "user", text: trimmed };
+    setBotMessages((prev) => [...prev, userMsg]);
+    setChatInput("");
+
+    setTimeout(() => {
+      let reply = "Beep boop! Let's play some chess! 🤖";
+      const lower = trimmed.toLowerCase();
+      if (lower.includes("good luck") || lower.includes("gl")) {
+        reply = "Good luck to you too! May the best mind win! 🧠";
+      } else if (lower.includes("nice") || lower.includes("good move") || lower.includes("great")) {
+        reply = "Thank you! I'm evaluating every square! ♟️";
+      } else if (lower.includes("gg") || lower.includes("game")) {
+        reply = "Good game! It was fun playing with you! 🏆";
+      } else if (difficulty === "easy") {
+        reply = "I'm Easy Bot! I'm still learning chess tactics. 🤖";
+      } else if (difficulty === "medium") {
+        reply = "I'm Medium Bot! I'm evaluating positions quickly! ⚡";
+      } else if (difficulty === "hard") {
+        reply = "I'm Hard Bot! I analyze thousands of moves per second! ⚔️";
+      }
+      setBotMessages((prev) => [...prev, { id: String(Date.now() + 1), sender: "bot", text: reply }]);
+    }, 500);
+  };
+
   // Show past position when reviewing moves
   const displayFen = reviewFen ?? fen;
-  const isLiveView = viewPly === 0 || viewPly >= moveHistory.length;
 
   useEffect(() => {
     if (viewPly === 0 || moveHistory.length === 0) {
@@ -568,7 +637,7 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
             </div>
           )}
 
-          {/* Mobile bottom toolbar — chess.com style */}
+          {/* Mobile bottom toolbar — chess.com style layout used during both play and after game */}
           <div className="lg:hidden shrink-0 border-t border-ccb-border" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
             {showResignConfirm ? (
               <div className="flex items-center justify-center gap-3 h-14">
@@ -582,11 +651,11 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
               </div>
             ) : gameEnded ? (
               <div className="flex items-center justify-around h-14">
-                <button onClick={() => toggleSheet("menu")} className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-muted hover:text-ccb-primary">
-                  <MoreVertical className="w-5 h-5" /><span className="text-[10px]">Options</span>
-                </button>
-                <button onClick={() => toggleSheet("theme")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "theme" ? "text-ccb-primary" : "text-ccb-muted"}`}>
-                  <Palette className="w-5 h-5" /><span className="text-[10px]">Board</span>
+                <button
+                  onClick={handleNewGame}
+                  className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-primary hover:text-ccb-primary/80"
+                >
+                  <RotateCcw className="w-5 h-5" /><span className="text-[10px]">New Game</span>
                 </button>
                 <button
                   onClick={() => setViewPly(Math.max(0, viewPly - 1))}
@@ -602,61 +671,181 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
                 >
                   <ChevronRight className="w-5 h-5" /><span className="text-[10px]">Forward</span>
                 </button>
+                <button
+                  onClick={() => toggleSheet("chat")}
+                  className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "chat" ? "text-ccb-primary" : "text-ccb-muted"}`}
+                >
+                  <MessageCircle className="w-5 h-5" /><span className="text-[10px]">Chat</span>
+                </button>
+                <button
+                  onClick={() => toggleSheet("menu")}
+                  className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "menu" ? "text-ccb-primary" : "text-ccb-muted"}`}
+                >
+                  <MoreVertical className="w-5 h-5" /><span className="text-[10px]">Options</span>
+                </button>
               </div>
             ) : (
               <div className="flex items-center justify-around h-14">
-                <button onClick={() => toggleSheet("moves")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "moves" ? "text-ccb-primary" : "text-ccb-muted"}`}>
-                  <List className="w-5 h-5" /><span className="text-[10px]">Moves</span>
-                </button>
-                <button onClick={() => toggleSheet("theme")} className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "theme" ? "text-ccb-primary" : "text-ccb-muted"}`}>
-                  <Palette className="w-5 h-5" /><span className="text-[10px]">Board</span>
-                </button>
                 <button
                   onClick={() => setShowResignConfirm(true)}
                   className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-danger"
                 >
                   <Flag className="w-5 h-5" /><span className="text-[10px]">Resign</span>
                 </button>
+                <button
+                  onClick={() => setViewPly(Math.max(0, viewPly - 1))}
+                  disabled={viewPly <= 0}
+                  className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-muted hover:text-ccb-primary disabled:opacity-30"
+                >
+                  <ChevronLeft className="w-5 h-5" /><span className="text-[10px]">Back</span>
+                </button>
+                <button
+                  onClick={() => setViewPly(Math.min(moveHistory.length, viewPly + 1))}
+                  disabled={viewPly >= moveHistory.length}
+                  className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-muted hover:text-ccb-primary disabled:opacity-30"
+                >
+                  <ChevronRight className="w-5 h-5" /><span className="text-[10px]">Forward</span>
+                </button>
+                <button
+                  onClick={() => toggleSheet("chat")}
+                  className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "chat" ? "text-ccb-primary" : "text-ccb-muted"}`}
+                >
+                  <MessageCircle className="w-5 h-5" /><span className="text-[10px]">Chat</span>
+                </button>
+                <button
+                  onClick={() => toggleSheet("menu")}
+                  className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "menu" ? "text-ccb-primary" : "text-ccb-muted"}`}
+                >
+                  <MoreVertical className="w-5 h-5" /><span className="text-[10px]">Options</span>
+                </button>
               </div>
             )}
           </div>
 
-          {/* Mobile menu dropdown */}
-          {activeSheet === "menu" && (
-            <div className="lg:hidden fixed inset-0 z-30" onClick={() => setActiveSheet(null)}>
-              <div className="absolute top-12 right-3 card p-2 min-w-[180px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                <button onClick={() => { setActiveSheet("theme"); }} className="w-full flex items-center justify-between px-3 py-2 rounded-md hover:bg-ccb-surface transition-colors text-sm">
-                  <span>Board Theme</span>
-                  <Palette className="w-4 h-4 text-ccb-muted" />
-                </button>
-                <button onClick={toggleSound} className="w-full flex items-center justify-between px-3 py-2 rounded-md hover:bg-ccb-surface transition-colors text-sm">
-                  <span>Sound</span>
-                  {soundOn ? <Volume2 className="w-4 h-4 text-ccb-primary" /> : <VolumeX className="w-4 h-4 text-ccb-muted" />}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Mobile bottom sheet — Moves / Theme */}
+          {/* Mobile bottom sheet — Chat / Menu / Moves / Theme */}
           {activeSheet && (
-            <div className="lg:hidden absolute inset-x-2 bottom-16 z-20 max-h-[45%] rounded-xl border border-ccb-border bg-ccb-card shadow-2xl animate-sheet-up flex flex-col overflow-hidden">
+            <div className="lg:hidden absolute inset-x-2 bottom-16 z-20 max-h-[50%] rounded-xl border border-ccb-border bg-ccb-card shadow-2xl animate-sheet-up flex flex-col overflow-hidden">
               <div className="flex items-center justify-between px-3 py-2 border-b border-ccb-border shrink-0">
                 <span className="text-sm font-medium">
-                  {activeSheet === "moves" ? "Move History" : "Board Theme"}
+                  {activeSheet === "chat" ? `Chat with ${DIFFICULTY_LABELS[difficulty]}` :
+                   activeSheet === "moves" ? "Move History" :
+                   activeSheet === "theme" ? "Board Theme" : "Options"}
                 </span>
                 <button onClick={() => setActiveSheet(null)} className="text-ccb-muted hover:text-ccb-primary p-1">
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto p-2 no-scrollbar">
-                {activeSheet === "moves" && (
-                  moveHistory.length >= 2 && <div className="mb-2"><OpeningBadge moves={moveHistory} /></div>
-                )}
-                {activeSheet === "moves" && (
-                  <div className="rounded-lg bg-ccb-surface/50 border border-ccb-border/50 px-2 py-1.5">
-                    <MoveScroller moves={moveHistory} currentPly={viewPly} onPlyChange={setViewPly} />
+
+              <div className="flex-1 overflow-y-auto p-2 no-scrollbar min-h-0 flex flex-col">
+                {activeSheet === "chat" && (
+                  <div className="flex flex-col h-full min-h-[200px]">
+                    <div className="flex-1 overflow-y-auto space-y-2 p-1">
+                      {botMessages.map((msg) => (
+                        <div key={msg.id} className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
+                          <div className={`max-w-[80%] rounded-lg px-2.5 py-1.5 text-xs ${
+                            msg.sender === "user"
+                              ? "bg-ccb-primary text-white"
+                              : "bg-ccb-surface text-ccb-text border border-ccb-border"
+                          }`}>
+                            {msg.sender === "bot" && (
+                              <div className="text-[10px] font-medium text-ccb-primary mb-0.5 flex items-center gap-1">
+                                <Bot className="w-3 h-3" /> {DIFFICULTY_LABELS[difficulty]}
+                              </div>
+                            )}
+                            <div>{msg.text}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Quick messages */}
+                    <div className="py-1 flex flex-wrap gap-1 border-t border-ccb-border/50 shrink-0">
+                      {["Good luck!", "Nice move!", "GG", "Oops 😅", "Let's go!"].map((q) => (
+                        <button
+                          key={q}
+                          onClick={() => sendChatMessage(q)}
+                          className="rounded-full bg-ccb-surface border border-ccb-border px-2 py-0.5 text-[11px] hover:bg-ccb-card transition-colors"
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Chat input */}
+                    <form
+                      onSubmit={(e) => { e.preventDefault(); sendChatMessage(chatInput); }}
+                      className="flex items-center gap-1.5 pt-1 shrink-0"
+                    >
+                      <input
+                        type="text"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        placeholder="Type a message..."
+                        className="flex-1 min-w-0 bg-ccb-surface border border-ccb-border rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-ccb-primary"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!chatInput.trim()}
+                        className="bg-ccb-primary text-white rounded-lg px-3 py-1 text-xs font-medium disabled:opacity-40"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                      </button>
+                    </form>
                   </div>
                 )}
+
+                {activeSheet === "menu" && (
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => setActiveSheet("theme")}
+                      className="w-full flex items-center justify-between p-2.5 rounded-lg bg-ccb-surface hover:bg-ccb-card text-xs font-medium transition-colors"
+                    >
+                      <span className="flex items-center gap-2"><Palette className="w-4 h-4 text-ccb-primary" /> Board Theme</span>
+                      <ChevronRight className="w-4 h-4 text-ccb-muted" />
+                    </button>
+                    <button
+                      onClick={() => setActiveSheet("moves")}
+                      className="w-full flex items-center justify-between p-2.5 rounded-lg bg-ccb-surface hover:bg-ccb-card text-xs font-medium transition-colors"
+                    >
+                      <span className="flex items-center gap-2"><List className="w-4 h-4 text-ccb-primary" /> Move History</span>
+                      <ChevronRight className="w-4 h-4 text-ccb-muted" />
+                    </button>
+                    <button
+                      onClick={toggleSound}
+                      className="w-full flex items-center justify-between p-2.5 rounded-lg bg-ccb-surface hover:bg-ccb-card text-xs font-medium transition-colors"
+                    >
+                      <span className="flex items-center gap-2">
+                        {soundOn ? <Volume2 className="w-4 h-4 text-ccb-primary" /> : <VolumeX className="w-4 h-4 text-ccb-muted" />} Sound
+                      </span>
+                      <span className="text-ccb-muted">{soundOn ? "On" : "Off"}</span>
+                    </button>
+                    {!gameEnded ? (
+                      <button
+                        onClick={() => { setActiveSheet(null); setShowResignConfirm(true); }}
+                        className="w-full flex items-center gap-2 p-2.5 rounded-lg bg-ccb-danger/10 text-ccb-danger hover:bg-ccb-danger/20 text-xs font-medium transition-colors"
+                      >
+                        <Flag className="w-4 h-4" /> Resign Game
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => { setActiveSheet(null); handleNewGame(); }}
+                        className="w-full flex items-center gap-2 p-2.5 rounded-lg bg-ccb-primary/10 text-ccb-primary hover:bg-ccb-primary/20 text-xs font-medium transition-colors"
+                      >
+                        <RotateCcw className="w-4 h-4" /> New Game
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {activeSheet === "moves" && (
+                  <>
+                    {moveHistory.length >= 2 && <div className="mb-2"><OpeningBadge moves={moveHistory} /></div>}
+                    <div className="rounded-lg bg-ccb-surface/50 border border-ccb-border/50 px-2 py-1.5">
+                      <MoveScroller moves={moveHistory} currentPly={viewPly} onPlyChange={setViewPly} />
+                    </div>
+                  </>
+                )}
+
                 {activeSheet === "theme" && <BoardThemePicker inline onThemeChange={setBoardTheme} />}
               </div>
             </div>
@@ -699,7 +888,6 @@ export default function ComputerGame({ difficulty, playerColor, initialMinutes, 
             <div className="text-center text-xs text-ccb-muted shrink-0">
               Move {moveCount} · {DIFFICULTY_LABELS[difficulty]} · vs Computer
             </div>
-
           </div>
         </div>
       </div>
