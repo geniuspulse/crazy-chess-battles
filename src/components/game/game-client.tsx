@@ -64,7 +64,10 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
   const [premove, setPremove] = useState<{ from: string; to: string } | null>(null);
   const [activeSheet, setActiveSheet] = useState<SheetType>(null);
   const [clockTick, setClockTick] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [desktopTab, setDesktopTab] = useState<"moves" | "chat">("moves");
+  const chatVisibleMobile = activeSheet === "chat";
+  const chatVisibleDesktop = desktopTab === "chat";
   const lastFenRef = useRef(game.fen);
   const soundPlayedForEnd = useRef(false);
   const prevFenRef = useRef(game.fen);
@@ -602,9 +605,14 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
             </button>
             <button
               onClick={() => toggleSheet("chat")}
-              className="flex flex-col items-center justify-center w-11 h-11 rounded-full bg-ccb-primary text-white shadow-md -mt-1"
+              className="relative flex flex-col items-center justify-center w-11 h-11 rounded-full bg-ccb-primary text-white shadow-md -mt-1"
             >
               <MessageCircle className="w-5 h-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 leading-none">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setViewPly(Math.max(0, viewPly - 1))}
@@ -653,9 +661,13 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
             </button>
             <button
               onClick={() => toggleSheet("chat")}
-              className={`flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "chat" ? "text-ccb-primary" : "text-ccb-muted"}`}
+              className={`relative flex flex-col items-center gap-0.5 flex-1 py-1 ${activeSheet === "chat" ? "text-ccb-primary" : "text-ccb-muted"}`}
             >
-              <MessageCircle className="w-5 h-5" /><span className="text-[10px]">Chat</span>
+              <MessageCircle className="w-5 h-5" />{unreadCount > 0 && (
+                <span className="absolute top-0.5 right-1/4 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold px-1 leading-none">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}<span className="text-[10px]">Chat</span>
             </button>
           </div>
         )}
@@ -677,7 +689,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         </div>
         <div className="flex-1 overflow-y-auto p-2 no-scrollbar">
           <div className={`h-full ${activeSheet === "chat" ? "" : "hidden"}`}>
-            <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} />
+            <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} isVisible={chatVisibleMobile} onUnreadChange={setUnreadCount} />
           </div>
           {activeSheet === "theme" && <BoardThemePicker inline onThemeChange={setBoardTheme} />}
         </div>
@@ -729,7 +741,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
         {/* Tabs */}
         <div className="flex items-center gap-1 shrink-0 px-1">
           <button onClick={() => setDesktopTab("moves")} className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${desktopTab === "moves" ? "bg-ccb-primary/10 text-ccb-primary border border-ccb-primary/20" : "text-ccb-muted hover:text-ccb-text border border-transparent"}`}>Moves</button>
-          <button onClick={() => setDesktopTab("chat")} className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${desktopTab === "chat" ? "bg-ccb-primary/10 text-ccb-primary border border-ccb-primary/20" : "text-ccb-muted hover:text-ccb-text border border-transparent"}`}>Chat</button>
+          <button onClick={() => setDesktopTab("chat")} className={`relative flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${desktopTab === "chat" ? "bg-ccb-primary/10 text-ccb-primary border border-ccb-primary/20" : "text-ccb-muted hover:text-ccb-text border border-transparent"}`}>Chat{unreadCount > 0 && (<span className="absolute top-1 right-2 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold px-1 leading-none">{unreadCount > 9 ? "9+" : unreadCount}</span>)}</button>
         </div>
 
         {/* Tab content — both panels stay mounted (CSS-hidden when inactive) so
@@ -755,7 +767,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
           </div>
         </div>
         <div className={`flex-1 min-h-0 flex flex-col rounded-lg border border-ccb-border overflow-hidden ${desktopTab === "chat" ? "" : "hidden"}`}>
-          <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} />
+          <GameChat gameId={gameId} currentUserId={currentUserId} currentUserName={isWhite ? whiteName : blackName} opponentName={isWhite ? blackName : whiteName} isSpectator={isSpectator} isVisible={chatVisibleDesktop} onUnreadChange={setUnreadCount} />
         </div>
       </div>
     </div>

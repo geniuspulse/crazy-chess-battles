@@ -17,6 +17,8 @@ interface GameChatProps {
   currentUserName: string;
   opponentName: string;
   isSpectator?: boolean;
+  isVisible?: boolean;
+  onUnreadChange?: (count: number) => void;
 }
 
 // Preset quick chat messages (chess.com style)
@@ -31,10 +33,13 @@ const QUICK_MESSAGES = [
   "Interesting...",
 ];
 
-export default function GameChat({ gameId, currentUserId, currentUserName, opponentName, isSpectator }: GameChatProps) {
+export default function GameChat({ gameId, currentUserId, currentUserName, opponentName, isSpectator, isVisible = true, onUnreadChange }: GameChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [showQuick, setShowQuick] = useState(false);
+  const unreadRef = useRef(0);
+  const isVisibleRef = useRef(isVisible);
+  isVisibleRef.current = isVisible;
   const scrollRef = useRef<HTMLDivElement>(null);
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null);
   const supabase = useMemo(() => createClient(), []);
@@ -47,6 +52,10 @@ export default function GameChat({ gameId, currentUserId, currentUserName, oppon
         const msg = payload.payload as ChatMessage;
         if (msg.senderId !== currentUserId) {
           setMessages((prev) => [...prev, msg]);
+          if (!isVisibleRef.current) {
+            unreadRef.current += 1;
+            onUnreadChange?.(unreadRef.current);
+          }
         }
       })
       .subscribe((status) => {
@@ -69,6 +78,14 @@ export default function GameChat({ gameId, currentUserId, currentUserName, oppon
     }
   }, [messages]);
 
+  // Reset unread count when chat becomes visible
+  useEffect(() => {
+    if (isVisible && unreadRef.current > 0) {
+      unreadRef.current = 0;
+      onUnreadChange?.(0);
+    }
+  }, [isVisible, onUnreadChange]);
+
   const sendMessage = useCallback((text: string) => {
     const trimmed = text.trim();
     if (!trimmed || trimmed.length > 500) return;
@@ -82,6 +99,11 @@ export default function GameChat({ gameId, currentUserId, currentUserName, oppon
 
     // Add to our own list immediately
     setMessages((prev) => [...prev, msg]);
+    // If we're sending, we must be viewing the chat — reset unread
+    if (unreadRef.current > 0) {
+      unreadRef.current = 0;
+      onUnreadChange?.(0);
+    }
 
     // Broadcast to others in the channel
     channelRef.current?.send({
