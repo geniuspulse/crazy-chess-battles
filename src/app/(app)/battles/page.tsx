@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -37,7 +37,7 @@ type BattleState = "select" | "searching" | "matched" | "playing";
 
 export default function BattlesPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const [view, setView] = useState<View>("main");
   const [config, setConfig] = useState<BattleConfig | null>(null);

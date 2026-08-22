@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { AIDifficulty } from "@/lib/game/chess-ai";
@@ -44,7 +44,7 @@ export default function PlayPage() {
   const matchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const cleanupSearch = () => {
     if (matchChannelRef.current) {

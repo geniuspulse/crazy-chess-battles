@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 export interface GameState {
@@ -42,27 +42,43 @@ export interface MoveBroadcast {
 }
 
 export function useRealtimeGame(gameId: string, initialState: GameState) {
-  const supabase = createClient();
+  // ── Stable Supabase client (created once, not on every render) ──────
+  // CRITICAL FIX: Previously `createClient()` was called on every render,
+  // creating a new Supabase client instance each time. This caused the
+  // channel subscription effect to re-run on every render, constantly
+  // destroying and recreating the realtime channel — so broadcasts and
+  // postgres_changes events were missed, making multiplayer moves not
+  // sync between players.
+  const supabase = useMemo(() => createClient(), []);
+
   const [game, setGame] = useState<GameState>(initialState);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [drawOffer, setDrawOffer] = useState<string | null>(null);
   const [opponentMove, setOpponentMove] = useState<MoveBroadcast | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  // Shared "last applied move" counter used by BOTH the postgres_changes
-  // handler and the broadcast handler, so a delayed/out-of-order DB change
-  // event can never clobber a newer state with an older FEN (this was
-  // causing pieces to visually jump forward -> backward -> forward).
+
+  // Shared "last applied move" counter used by ALL handlers (postgres_changes,
+  // broadcast, and polling) so a delayed/out-of-order event can never clobber
+  // a newer state with an older FEN.
   const lastAppliedMoveCount = useRef<number>(initialState.move_count ?? 0);
+
   // Reconnection counter — bumping this re-triggers the subscription effect
   const [reconnectTick, setReconnectTick] = useState(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Ref to always have the latest game status for the polling check
+  // (avoids stale closure issues in the polling interval)
+  const gameStatusRef = useRef(initialState.status);
+  useEffect(() => {
+    gameStatusRef.current = game.status;
+  }, [game.status]);
+
   // ── Fetch the latest game state from the API as a fallback ──────────────
   // This runs:
   //   1. On initial mount (in case realtime hasn't connected yet)
-  //   2. On every poll tick (every 4s — a safety net for missed realtime events)
+  //   2. On every poll tick (every 2s — a safety net for missed realtime events)
   //   3. Immediately after any reconnection
   const fetchGameState = useCallback(async () => {
     try {
@@ -75,7 +91,7 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
       if (newMoveCount < lastAppliedMoveCount.current) return;
       if (newMoveCount === lastAppliedMoveCount.current) {
         // Same move count — but check if status changed (e.g. timeout, resignation)
-        if (data.status === game.status) return;
+        if (data.status === gameStatusRef.current) return;
       }
 
       lastAppliedMoveCount.current = newMoveCount;
@@ -94,9 +110,15 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
     } catch {
       // Silent — polling will retry
     }
-  }, [gameId, game.status]);
+  }, [gameId]);
 
   // ── Subscribe to real-time updates ──────────────────────────────────────
+  // CRITICAL FIX: This effect now only depends on [gameId, reconnectTick].
+  // Previously it also depended on `supabase`, which changed on every render
+  // (because createClient() was called without useMemo). This caused the
+  // channel to be torn down and recreated on every state update, missing all
+  // realtime events. Now with a stable supabase instance (useMemo), the
+  // channel is created once and stays alive for the entire game.
   useEffect(() => {
     const channel = supabase
       .channel(`game:${gameId}`)
@@ -110,9 +132,7 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
         },
         (payload) => {
           const updated = payload.new as Partial<GameState>;
-          // Ignore stale/out-of-order updates: only apply if this row
-          // version is at least as new as the most recent move we've
-          // already applied locally (covers replication lag / reordering).
+          // Ignore stale/out-of-order updates
           if (
             typeof updated.move_count === "number" &&
             updated.move_count < lastAppliedMoveCount.current
@@ -133,11 +153,10 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
       })
       .on("broadcast", { event: "move" }, (payload: any) => {
         const data = payload.payload as MoveBroadcast;
-        // Only process if this is a new move (avoid duplicate/stale processing)
+        // Only process if this is a new move
         if (data.moveCount > lastAppliedMoveCount.current) {
           lastAppliedMoveCount.current = data.moveCount;
           setOpponentMove(data);
-          // Also immediately update game state from the broadcast
           setGame((prev) => ({
             ...prev,
             fen: data.fen,
@@ -162,14 +181,11 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
         if (status === "SUBSCRIBED") {
           setConnected(true);
           setError(null);
-          // On (re)connection, immediately fetch the latest state to catch
-          // up on any moves we might have missed while disconnected.
           fetchGameState();
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           setConnected(false);
           setError("Connection lost. Reconnecting...");
-          // Auto-reconnect after 2 seconds by bumping the reconnect tick
           if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
           reconnectTimerRef.current = setTimeout(() => {
             setReconnectTick((t) => t + 1);
@@ -184,26 +200,25 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameId, supabase, reconnectTick]);
+  }, [gameId, reconnectTick]);
 
-  // ── Polling fallback — fetch game state every 4 seconds ──────────────────
-  // Realtime (both broadcast and postgres_changes) can silently drop on mobile
-  // networks. This poll ensures we always catch opponent moves even if the
-  // realtime channel is dead. It's a cheap single-row SELECT that short-circuits
-  // when the move count hasn't changed.
+  // ── Polling fallback — fetch game state every 2 seconds ──────────────────
+  // Reduced from 4s to 2s for snappier sync. Realtime (broadcast + postgres_changes)
+  // can silently drop on mobile networks. This poll ensures we always catch
+  // opponent moves even if the realtime channel is dead.
+  //
+  // FIX: Previously used setGame((prev) => { fetchGameState(); return prev; })
+  // to check game.status inside the interval — an anti-pattern that calls an
+  // async function inside a state updater. Now uses a ref (gameStatusRef)
+  // to check status without the state updater hack.
   useEffect(() => {
-    // Initial fetch in case realtime hasn't connected yet
     fetchGameState();
 
     pollRef.current = setInterval(() => {
-      // Only poll while the game is still in progress
-      setGame((prev) => {
-        if (prev.status === "playing") {
-          fetchGameState();
-        }
-        return prev;
-      });
-    }, 4000);
+      if (gameStatusRef.current === "playing") {
+        fetchGameState();
+      }
+    }, 2000);
 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
@@ -233,7 +248,6 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
     }
   }, [gameId]);
 
-
   const makeMove = useCallback(
     async (from: string, to: string, promotion?: string) => {
       try {
@@ -251,7 +265,6 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
         }
 
         setError(null);
-        // Update local state immediately
         if (data.fen) {
           if (typeof data.moveCount === "number") {
             lastAppliedMoveCount.current = Math.max(lastAppliedMoveCount.current, data.moveCount);
@@ -259,6 +272,7 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
           setGame((prev) => ({
             ...prev,
             fen: data.fen,
+            pgn: data.pgn || prev.pgn,
             turn: data.turn,
             status: data.status,
             winner: data.winner,
@@ -269,7 +283,6 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
           }));
 
           // Broadcast the move to the opponent over the realtime channel
-          // This is faster than waiting for Supabase postgres_changes propagation
           if (channelRef.current) {
             const moveBroadcast: MoveBroadcast = {
               from,

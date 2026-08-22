@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 
 // Lightweight endpoint that returns the current game state.
 // Used as a polling fallback when Supabase realtime drops (common on mobile
-// networks). The client polls this every ~4s and ignores responses where the
+// networks). The client polls this every ~2s and ignores responses where the
 // move_count hasn't advanced, so it's a cheap single-row SELECT.
 export async function GET(req: NextRequest) {
   try {
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
 
     const { data: game, error } = await supabase
       .from("games")
-      .select("id, fen, pgn, turn, status, winner, move_count, white_clock_ms, black_clock_ms, last_move_at")
+      .select("id, fen, pgn, turn, status, winner, move_count, white_clock_ms, black_clock_ms, last_move_at, white_player_id, black_player_id, white_rating, black_rating, white_rating_change, black_rating_change, time_control, initial_minutes, increment_seconds, rated")
       .eq("id", gameId)
       .single();
 

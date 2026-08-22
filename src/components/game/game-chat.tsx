@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Send } from "lucide-react";
 
@@ -37,7 +37,7 @@ export default function GameChat({ gameId, currentUserId, currentUserName, oppon
   const [showQuick, setShowQuick] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     const channel = supabase.channel(`chat:${gameId}`);

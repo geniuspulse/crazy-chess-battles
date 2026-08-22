@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Swords, Loader2, Wallet, Smartphone, Check, AlertCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -32,7 +32,7 @@ export default function BattleChallengeAccept({
   phone: savedPhone,
 }: Props) {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [balance, setBalance] = useState(initialBalanceCents);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
