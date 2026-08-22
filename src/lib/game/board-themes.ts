@@ -17,12 +17,12 @@ export const BOARD_THEMES: BoardTheme[] = [
 const STORAGE_KEY = "ccb-board-theme";
 
 export function getStoredBoardTheme(): BoardTheme {
-  if (typeof window === "undefined") return BOARD_THEMES[0];
+  if (typeof window === "undefined") return BOARD_THEMES[1]; // default: Green
   try {
     const id = localStorage.getItem(STORAGE_KEY);
-    return BOARD_THEMES.find((t) => t.id === id) || BOARD_THEMES[0];
+    return BOARD_THEMES.find((t) => t.id === id) || BOARD_THEMES[1]; // default: Green
   } catch {
-    return BOARD_THEMES[0];
+    return BOARD_THEMES[1]; // default: Green
   }
 }
 

@@ -54,7 +54,7 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
   const [game, setGame] = useState<GameState>(initialState);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [drawOffer, setDrawOffer] = useState<string | null>(null);
+  const [drawOffer, setDrawOffer] = useState<string | null>(null); // "offer" = received from opponent, "pending" = sent by us, null = none
   const [opponentMove, setOpponentMove] = useState<MoveBroadcast | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
@@ -171,11 +171,21 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
           }));
         }
       })
-      .on("broadcast", { event: "draw_offer" }, () => {
+      .on("broadcast", { event: "draw_offer" }, (payload: any) => {
+        // Only show Accept/Decline if the offer came from the opponent
+        // (we ignore our own broadcast echo)
+        const from = payload?.payload?.from;
+        if (from && from !== initialState.white_player_id && from !== initialState.black_player_id) return;
         setDrawOffer("offer");
       })
       .on("broadcast", { event: "draw_declined" }, () => {
         setDrawOffer(null);
+      })
+      .on("broadcast", { event: "resign" }, (payload: any) => {
+        const data = payload?.payload;
+        if (data?.winner) {
+          setGame((prev) => ({ ...prev, status: "resign", winner: data.winner }));
+        }
       })
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
@@ -340,13 +350,16 @@ export function useRealtimeGame(gameId: string, initialState: GameState) {
 
   // Draw offer / accept / decline
   const offerDraw = useCallback(async () => {
+    setDrawOffer("pending"); // Show "Waiting for opponent..." locally
     try {
       await fetch("/api/game/draw", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ gameId, action: "offer" }),
       });
-    } catch {}
+    } catch {
+      setDrawOffer(null);
+    }
   }, [gameId]);
 
   const acceptDraw = useCallback(async () => {

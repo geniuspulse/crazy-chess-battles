@@ -523,7 +523,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
       {/* Your bar */}
       {renderPlayerBar(bottomPlayer)}
 
-      {/* Draw offer banner */}
+      {/* Draw offer banner — received from opponent */}
       {drawOffer === "offer" && !isSpectator && !gameEnded && (
         <div className="max-w-[600px] mx-auto w-full px-2 py-2">
           <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg bg-ccb-primary/10 border border-ccb-primary/30">
@@ -534,6 +534,17 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
               <button onClick={acceptDraw} className="btn-primary text-sm px-4 py-1.5">Accept</button>
               <button onClick={declineDraw} className="btn-secondary text-sm px-4 py-1.5">Decline</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Draw offer banner — we sent it, waiting for opponent */}
+      {drawOffer === "pending" && !isSpectator && !gameEnded && (
+        <div className="max-w-[600px] mx-auto w-full px-2 py-2">
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-ccb-muted/10 border border-ccb-border">
+            <div className="w-4 h-4 border-2 border-ccb-muted border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm text-ccb-muted">Waiting for opponent to respond…</span>
+            <button onClick={declineDraw} className="ml-auto text-sm text-ccb-muted hover:text-ccb-danger underline">Cancel</button>
           </div>
         </div>
       )}
@@ -564,7 +575,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
               <button onClick={() => setShowResignConfirm(true)} className="btn-secondary text-sm">
                 <Flag className="w-4 h-4 mr-1" /> Resign
               </button>
-              <button onClick={offerDraw} className="btn-secondary text-sm">
+              <button onClick={offerDraw} disabled={drawOffer !== null} className="btn-secondary text-sm disabled:opacity-40">
                 <Handshake className="w-4 h-4 mr-1" /> Offer Draw
               </button>
             </>
@@ -614,7 +625,7 @@ export default function GameClient({ gameId, initialGame, currentUserId, isSpect
           <div className="flex items-center justify-around h-14">
             <button
               onClick={offerDraw}
-              disabled={isSpectator}
+              disabled={isSpectator || drawOffer !== null}
               className="flex flex-col items-center gap-0.5 flex-1 py-1 text-ccb-muted disabled:opacity-40"
             >
               <Handshake className="w-5 h-5" /><span className="text-[10px]">Draw</span>

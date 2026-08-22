@@ -51,6 +51,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to update game" }, { status: 500 });
     }
 
+    // Broadcast resignation to opponent via realtime for instant notification
+    const channel = admin.channel(`game:${gameId}`);
+    await channel.send({
+      type: "broadcast",
+      event: "resign",
+      payload: { from: user.id, winner },
+    });
+
     // Update ratings
     const { data: whiteProfile } = await admin
       .from("profiles")
